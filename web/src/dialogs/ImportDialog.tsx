@@ -217,11 +217,9 @@ export default function ImportDialog(props: DeckDialogProps): JSX.Element {
         )}
       </div>
       <div className="dialog-foot">
-        {tab !== 'apkg' && (
-          <button className="btn" onClick={onClose}>
-            取消
-          </button>
-        )}
+        <button className="btn" onClick={onClose}>
+          取消
+        </button>
         {tab === 'apkg' ? (
           <button
             className="btn primary"

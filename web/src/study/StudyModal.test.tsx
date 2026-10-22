@@ -207,6 +207,21 @@ describe('学习弹窗', () => {
     await waitFor(() => expect(text()).toContain('学习完成'));
   });
 
+  it('主题卡：空格显示内容，标题和内容按纯文本显示、保留换行', async () => {
+    const topic: CardItem = { ...noteCard, id: 'c3', cardType: 'topic', front: '调度算法', back: 'FCFS\n**SJF**' };
+    session = { label: '系统推荐', queue: [{ cardId: 'c3', rep: false, flipped: false }], cards: [topic] };
+    itemOverride = [topic];
+    renderStudy();
+    act(() => {
+      useUI.getState().openStudy({ deckId: 'd1' });
+    });
+    await waitFor(() => expect(text()).toContain('显示内容（空格）'));
+    expect(document.querySelector('.topic-title')?.textContent).toBe('调度算法');
+    keyDown(' ');
+    await waitFor(() => expect(text()).toContain('FCFS\n**SJF**'));
+    expect(document.querySelector('.study-content strong')).toBeNull();
+  });
+
   it('队列为空时提示并关闭', async () => {
     session = { label: '系统推荐', queue: [], cards: [] };
     renderStudy();

@@ -7,7 +7,7 @@ import {
   dueCutoff, previews, relTime, resolveStudyCfg, schedCfgFor,
   type CardItem, type CardState, type ID, type Item, type QueueEntry, type Rating, type StudyContent,
 } from '@bnki/shared';
-import { plainText, renderMarkdown } from '@bnki/shared/markdown';
+import { renderMarkdown } from '@bnki/shared/markdown';
 import { api } from '../api';
 import { invalidateDeck, useDeck, useDecks, useItems, useSettings } from '../queries';
 import { useUI, type StudyTarget } from '../store';
@@ -527,9 +527,10 @@ function StudyView(props: { target: StudyTarget }): JSX.Element | null {
               >
                 {card.cardType === 'topic' ? (
                   <>
-                    <div className="topic-title">{plainText(card.front)}</div>
+                    {/* 主题卡是标题 + 纯文本，不按 Markdown 渲染，原样保留换行 */}
+                    <div className="topic-title">{card.front}</div>
                     {view.topic ? (
-                      <div style={{ marginTop: 24, whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: renderMarkdown(card.back) }} />
+                      <div style={{ marginTop: 24, whiteSpace: 'pre-wrap' }}>{card.back}</div>
                     ) : (
                       <div className="show-ans">
                         <button className="btn" onClick={() => setView((v) => ({ ...v, topic: true }))}>显示内容（空格）</button>
