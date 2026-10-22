@@ -200,7 +200,10 @@ export default function HomePage(props: { view: HomeView }) {
   );
 
   const grid = decks.length ? (
-    <div className="deck-grid">{decks.map(card)}</div>
+    <>
+      {view === 'trash' && <p className="hint-text" style={{ margin: '-8px 0 14px' }}>删除的卡片集会保留在这里，可以恢复或彻底删除</p>}
+      <div className="deck-grid">{decks.map(card)}</div>
+    </>
   ) : (
     <div className="empty">{view === 'trash' ? '回收站是空的' : q.trim() ? '没有匹配的卡片集' : '还没有卡片集，点左上角“新建卡片集”'}</div>
   );

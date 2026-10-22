@@ -1,10 +1,12 @@
-// 导出对话框：格式 / 挖空 / 范围三个选项，底部下载或调起打印。接口 GET /api/export/:deckId。
-import { useMemo, useState } from 'react';
+// 导出对话框：格式 / 挖空 / 范围三个选项，下面是导出内容的预览，底部复制、下载或调起打印。接口 GET /api/export/:deckId。
+import { useMemo, useRef, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import type { JSX } from 'react';
 import type { SectionItem } from '@bnki/shared';
 import { api } from '../api';
 import { useItems } from '../queries';
 import { Modal, DialogHead } from '../ui/Modal';
+import { toast } from '../ui/toast';
 import '../styles/export.css';
 
 export interface DeckDialogProps {
@@ -38,6 +40,41 @@ export default function ExportDialog(props: DeckDialogProps): JSX.Element {
   const url = api.io.exportUrl(deckId, params);
   const canDownload = scope === 'all' || picked.length > 0;
 
+  // 预览就是将要下载的文件内容（inline=1 让后端不带附件头）
+  const previewUrl = api.io.exportUrl(deckId, { ...params, inline: 1 });
+  const preview = useQuery({
+    queryKey: ['export-preview', previewUrl],
+    queryFn: async () => {
+      const r = await fetch(previewUrl);
+      if (!r.ok) throw new Error(String(r.status));
+      return r.text();
+    },
+    enabled: canDownload,
+  });
+  const text = canDownload ? (preview.data ?? '') : '';
+
+  const box = useRef<HTMLTextAreaElement>(null);
+  // 剪贴板 API 没有权限时（嵌入页面、非安全上下文）退回到选中文本框再执行复制
+  const copyBySelection = (): boolean => {
+    const el = box.current;
+    if (!el) return false;
+    el.focus();
+    el.select();
+    try {
+      return document.execCommand('copy');
+    } catch {
+      return false;
+    }
+  };
+  const copy = (): void => {
+    const fallback = (): void => toast(copyBySelection() ? '已复制' : '复制失败，请手动选择');
+    if (!navigator.clipboard) {
+      fallback();
+      return;
+    }
+    navigator.clipboard.writeText(text).then(() => toast('已复制'), fallback);
+  };
+
   const download = (): void => {
     const a = document.createElement('a');
     a.href = url;
@@ -49,7 +86,7 @@ export default function ExportDialog(props: DeckDialogProps): JSX.Element {
   };
 
   const print = (): void => {
-    window.open(api.io.exportUrl(deckId, { ...params, inline: 1 }), '_blank');
+    window.open(previewUrl, '_blank');
   };
 
   const toggle = (id: string): void => {
@@ -106,16 +143,20 @@ export default function ExportDialog(props: DeckDialogProps): JSX.Element {
             </div>
           )}
         </div>
+        <textarea ref={box} className="text-input export-out" rows={12} readOnly value={text} />
       </div>
       <div className="dialog-foot">
         <button className="btn" onClick={onClose}>
-          取消
+          关闭
         </button>
         {format === 'html' && (
           <button className="btn" onClick={print}>
             打印 / 存为 PDF
           </button>
         )}
+        <button className="btn" disabled={!text} onClick={copy}>
+          复制
+        </button>
         <button className="btn primary" disabled={!canDownload} onClick={download}>
           下载
         </button>

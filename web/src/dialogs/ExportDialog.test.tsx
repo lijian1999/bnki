@@ -32,7 +32,8 @@ beforeEach(() => {
     vi.fn(async (input: unknown) => {
       const path = String(input).split('?')[0];
       const body = path === '/api/decks/d1/items' ? ITEMS : { ok: true };
-      return { ok: true, status: 200, json: async () => body } satisfies Partial<Response>;
+      const text = path === '/api/export/d1' ? `# 导出 ${String(input).split('?')[1]}` : '';
+      return { ok: true, status: 200, json: async () => body, text: async () => text } satisfies Partial<Response>;
     }),
   );
 });
@@ -110,5 +111,18 @@ describe('ExportDialog', () => {
     expect(downloadButton().disabled).toBe(true);
     fireEvent.click(await screen.findByText('A'));
     expect(downloadButton().disabled).toBe(false);
+  });
+
+  it('预览导出内容，复制到剪贴板', async () => {
+    const writeText = vi.fn(async () => {});
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    renderDialog();
+    const box = (await screen.findByDisplayValue(/^# 导出 /)) as HTMLTextAreaElement;
+    expect(box.value).toContain('format=md');
+    expect(box.value).toContain('inline=1');
+    fireEvent.click(screen.getByRole('button', { name: 'CSV' }));
+    await waitFor(() => expect(box.value).toContain('format=csv'));
+    fireEvent.click(screen.getByRole('button', { name: '复制' }));
+    expect(writeText).toHaveBeenCalledWith(box.value);
   });
 });
