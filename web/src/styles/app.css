@@ -70,16 +70,6 @@ input, textarea, select { font: inherit; color: inherit; }
 a { color: var(--accent); }
 .hidden { display: none !important; }
 
-/* ---------- 原型说明条 ---------- */
-.proto-bar {
-  position: fixed; left: 50%; bottom: 14px; transform: translateX(-50%);
-  z-index: 400; display: flex; gap: 8px; align-items: center;
-  background: rgba(29,29,31,.88); color: #fff; padding: 6px 8px 6px 14px;
-  border-radius: 999px; font-size: 12px; box-shadow: var(--shadow-lg);
-}
-.proto-bar button { background: rgba(255,255,255,.14); border: 0; color: #fff; border-radius: 999px; padding: 3px 10px; font-size: 12px; }
-.proto-bar button:hover { background: rgba(255,255,255,.26); }
-
 /* ---------- 布局 ---------- */
 .app { display: flex; height: 100vh; }
 .sidebar {
