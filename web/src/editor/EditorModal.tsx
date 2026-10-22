@@ -8,6 +8,7 @@ import {
 import { plainText } from '@bnki/shared/markdown';
 import type { Editor } from '@tiptap/core';
 import type { Mark } from '@tiptap/pm/model';
+import { Selection } from '@tiptap/pm/state';
 import { api } from '../api';
 import { invalidateDeck, useItems, useSaveSettings, useSettings } from '../queries';
 import { useUI, type EditorTarget } from '../store';
@@ -222,21 +223,39 @@ function EditorBody(props: {
   function focusField(f: FieldKey): void {
     activeRef.current = f;
     setActive(f);
+    // 返回 true 表示焦点已经在这个字段里了。
+    // 不用 isSource 判断形态：调用方（如加提示）可能还在旧的渲染里，字段要下一次渲染才挂上；按实际挂着的元素来
     const run2 = (): boolean => {
-      if (isSource(f)) {
-        const el = inputs.current[f];
-        if (!el) return false;
+      const el = inputs.current[f];
+      if (el?.isConnected) {
+        if (document.activeElement === el) return true;
         el.focus();
         el.setSelectionRange(el.value.length, el.value.length);
-        return true;
+        return document.activeElement === el;
       }
       const ed = editors.current[f];
-      if (!ed) return false;
-      ed.chain().focus('end').run();
-      return true;
+      if (!ed || ed.isDestroyed) return false;
+      // 实例建好了但视图还没挂到页面上时拿不到 dom，要等它挂上
+      let dom: HTMLElement | null = null;
+      try {
+        dom = ed.view.dom;
+      } catch {
+        dom = null;
+      }
+      if (!dom?.isConnected) return false;
+      if (ed.view.hasFocus()) return true;
+      // Tiptap 的 focus 命令要到下一帧才真正聚焦，后台标签页里帧会被挂起；这里先设好光标再同步聚焦
+      ed.view.dispatch(ed.state.tr.setSelection(Selection.atEnd(ed.state.doc)));
+      ed.view.focus();
+      return ed.view.hasFocus();
     };
-    // 字段刚重挂上时编辑器和文本域还没注册好，补一次
-    if (!run2()) setTimeout(run2, 0);
+    // 字段刚挂上时编辑器可能还没建好（开发模式下还会先建一个再换新的），等到焦点真的落进去为止
+    let tries = 0;
+    const retry = (): void => {
+      if (run2() || ++tries > 30 || activeRef.current !== f) return;
+      setTimeout(retry, 16);
+    };
+    retry();
   }
 
   function focusFirst(): void {
@@ -384,7 +403,7 @@ function EditorBody(props: {
 
   function addHint(): void {
     props.setEd((s) => ({ ...s, showHint: true }));
-    setTimeout(() => focusField('hint'), 0);
+    focusField('hint');
   }
 
   async function addLink(): Promise<void> {

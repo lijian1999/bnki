@@ -2,7 +2,7 @@
  * Markdown → 编辑器：用 renderMarkdown(src, { editor: true }) 得到 HTML，再交给 Tiptap 解析；
  * 这里的 parseHTML 规则对应 docs/contracts.md 第 4 节的 HTML 结构。
  */
-import { Mark, Node, mergeAttributes, markInputRule, type AnyExtension } from '@tiptap/core';
+import { Extension, Mark, Node, mergeAttributes, markInputRule, type AnyExtension } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import Image from '@tiptap/extension-image';
 import Code from '@tiptap/extension-code';
@@ -122,6 +122,22 @@ const BTaskItem = TaskItem.extend({
 
 const lowlight = createLowlight(common);
 
+/**
+ * StarterKit 的 **x** / *x* / ~~x~~ 规则要求标记前是空白或行首，中文里几乎从不成立。
+ * 这里只要求前一个字不是同一种标记符；用后行断言，前一个字不进匹配，转换时不会被删掉。
+ */
+const CjkMarkRules = Extension.create({
+  name: 'cjkMarkRules',
+  addInputRules() {
+    const m = this.editor.schema.marks;
+    return [
+      markInputRule({ find: /(?<![*\\])\*\*([^*\n]+)\*\*$/, type: m.bold }),
+      markInputRule({ find: /(?<![*\\])\*([^*\n]+)\*$/, type: m.italic }),
+      markInputRule({ find: /(?<![~\\])~~([^~\n]+)~~$/, type: m.strike }),
+    ];
+  },
+});
+
 /** 编辑器用的全部扩展（不含 Placeholder 这类只影响界面的扩展，调用方自己追加）。 */
 export function editorExtensions(): AnyExtension[] {
   return [
@@ -129,6 +145,7 @@ export function editorExtensions(): AnyExtension[] {
     // ⌘E 留给挖空（Code 默认把 Mod-e 绑成行内代码）
     Code.extend({ addKeyboardShortcuts: () => ({}) }),
     CodeBlockLowlight.configure({ lowlight }),
+    CjkMarkRules,
     Cloze,
     Highlight,
     TextColor,

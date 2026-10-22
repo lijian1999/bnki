@@ -132,6 +132,19 @@ describe('卡片编辑器', () => {
     await waitFor(() => expect(screen.getByText('提示')).toBeTruthy());
   });
 
+  it('点 ＋ 提示 后光标落在提示里，⌥↩ 再到答案', async () => {
+    renderEditor();
+    open({ deckId: 'd1' });
+    await waitFor(() => expect(document.querySelectorAll('.ProseMirror').length).toBe(2));
+    fireEvent.click(screen.getByText('＋ 提示'));
+    await waitFor(() => expect(document.querySelectorAll('.ProseMirror').length).toBe(3));
+    const pms = (): Element[] => [...document.querySelectorAll('.ProseMirror')];
+    await waitFor(() => expect(document.activeElement).toBe(pms()[1]));
+
+    fireEvent.keyDown(document.activeElement as Element, { key: 'Enter', altKey: true });
+    await waitFor(() => expect(document.activeElement).toBe(pms()[2]));
+  });
+
   it('连续新建：填完点完成后弹窗不关，继续下一张', async () => {
     renderEditor();
     open({ deckId: 'd1' });
