@@ -1,0 +1,27 @@
+/* 统计页、设置页、导入 / 快捷键对话框的新增样式（app.css 里没有的）。 */
+
+/* 宽版弹窗（导入）：原型里是内联 620px。 */
+.dialog.wide-dialog { width: 620px; }
+
+.seg-tabs { margin-bottom: 12px; }
+
+.imp-text { margin: 8px 0 10px; }
+.file-row { margin: 10px 0; }
+
+.imp-row { font-size: 12px; border-bottom: 1px solid var(--line); padding: 4px 0; word-break: break-all; }
+.imp-row .imp-sec { margin-right: 4px; }
+
+/* 设置页 */
+.range-input { width: 180px; }
+.select-input { height: 30px; border: 1px solid var(--line-2); border-radius: 7px; padding: 0 8px; background: var(--panel); }
+.dir-code { font-size: 12px; word-break: break-all; }
+
+.backup-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.backup-row:last-child { border-bottom: 0; }
+.backup-row .l b { font-weight: 500; display: block; }
+.backup-row .l span { font-size: 12px; color: var(--text-3); }
+
+.big-num { font-size: 26px; font-weight: 700; }
+
+.kbd-group { margin: 14px 0 6px; font-size: 13px; font-weight: 500; }
+.kbd-group:first-child { margin-top: 6px; }

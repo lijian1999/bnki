@@ -80,3 +80,14 @@ describe('输入规则', () => {
     ed.destroy();
   });
 });
+
+describe('快捷键', () => {
+  it('Mod-e 不再触发行内代码（留给挖空）', () => {
+    const ed = new Editor({ extensions: editorExtensions(), content: '<p>abc</p>' });
+    ed.commands.setTextSelection({ from: 1, to: 4 });
+    const ev = new KeyboardEvent('keydown', { key: 'e', ctrlKey: true });
+    ed.view.someProp('handleKeyDown', (f) => f(ed.view, ev));
+    expect(ed.getHTML()).toBe('<p>abc</p>');
+    ed.destroy();
+  });
+});

@@ -1,0 +1,3 @@
+/* 导出对话框：比默认弹窗宽一点，目录列表跟在范围按钮下面 */
+.dialog.export-dialog { width: 520px; }
+.export-sections { margin-top: 10px; }

@@ -1,0 +1,22 @@
+/* 编辑器自己的样式：app.css 里的类名沿用原型，这里只补编辑器才有的东西。 */
+
+/* 占位文字：Placeholder 只会给空的文本块加 is-empty 和 data-placeholder */
+.wysiwyg .is-empty::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+  color: var(--text-3);
+}
+
+/* 公式块居中（.md 里没有这条） */
+.wysiwyg .math-block {
+  text-align: center;
+  margin: 6px 0;
+}
+
+/* Tiptap 的可编辑区在 .wysiwyg 里面一层：去掉浏览器的焦点框，并撑满整个字段，点空白处也能聚焦 */
+.wysiwyg > div { display: contents; }
+.wysiwyg .ProseMirror { outline: none; min-height: 68px; }
+.wysiwyg.small .ProseMirror { min-height: 22px; }
+.wysiwyg .ProseMirror > :first-child { margin-top: 0; }

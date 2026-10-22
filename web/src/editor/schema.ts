@@ -5,6 +5,7 @@
 import { Mark, Node, mergeAttributes, markInputRule, type AnyExtension } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import Image from '@tiptap/extension-image';
+import Code from '@tiptap/extension-code';
 import { TableKit } from '@tiptap/extension-table';
 import { TaskList, TaskItem } from '@tiptap/extension-list';
 import { CodeBlockLowlight } from '@tiptap/extension-code-block-lowlight';
@@ -124,7 +125,9 @@ const lowlight = createLowlight(common);
 /** 编辑器用的全部扩展（不含 Placeholder 这类只影响界面的扩展，调用方自己追加）。 */
 export function editorExtensions(): AnyExtension[] {
   return [
-    StarterKit.configure({ codeBlock: false, trailingNode: false, link: { openOnClick: false } }),
+    StarterKit.configure({ code: false, codeBlock: false, trailingNode: false, link: { openOnClick: false } }),
+    // ⌘E 留给挖空（Code 默认把 Mod-e 绑成行内代码）
+    Code.extend({ addKeyboardShortcuts: () => ({}) }),
     CodeBlockLowlight.configure({ lowlight }),
     Cloze,
     Highlight,

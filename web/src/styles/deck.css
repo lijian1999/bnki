@@ -1,0 +1,4 @@
+/* 卡片集页补充样式：app.css 只覆盖了 .mini-card 的拖拽透明度，目录行拖拽时同样变淡。 */
+.section-h.dragging {
+  opacity: 0.4;
+}
