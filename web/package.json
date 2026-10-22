@@ -1,0 +1,40 @@
+{
+  "name": "@bnki/web",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --port 18421 --strictPort",
+    "build": "vite build"
+  },
+  "dependencies": {
+    "@bnki/shared": "*",
+    "@dnd-kit/core": "^6.3.1",
+    "@dnd-kit/sortable": "^10.0.0",
+    "@tanstack/react-query": "^5.104.5",
+    "@tiptap/core": "^3.32.0",
+    "@tiptap/extension-code-block-lowlight": "^3.32.0",
+    "@tiptap/extension-image": "^3.32.0",
+    "@tiptap/extension-table": "^3.32.0",
+    "@tiptap/extensions": "^3.32.0",
+    "@tiptap/pm": "^3.32.0",
+    "@tiptap/react": "^3.32.0",
+    "@tiptap/starter-kit": "^3.32.0",
+    "highlight.js": "^11.11.1",
+    "katex": "^0.16.25",
+    "lowlight": "^3.3.0",
+    "prosemirror-markdown": "^1.13.8",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "react-router-dom": "^7.18.4",
+    "zustand": "^5.0.16"
+  },
+  "devDependencies": {
+    "@testing-library/react": "^16.3.3",
+    "@testing-library/user-event": "^14.6.1",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "jsdom": "^27.0.0",
+    "vite": "^8.3.5"
+  }
+}

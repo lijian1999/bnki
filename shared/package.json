@@ -1,0 +1,13 @@
+{
+  "name": "@bnki/shared",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./src/index.ts", "./*": "./src/*.ts" },
+  "dependencies": {
+    "highlight.js": "^11.11.1",
+    "katex": "^0.16.25",
+    "markdown-it": "^14.1.0",
+    "ts-fsrs": "^5.4.2"
+  },
+  "devDependencies": { "@types/markdown-it": "^14.1.2" }
+}

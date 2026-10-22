@@ -1,0 +1,6 @@
+node_modules/
+dist/
+.orch/
+data/
+.DS_Store
+*.log
