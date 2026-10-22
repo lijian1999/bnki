@@ -45,7 +45,7 @@ export const DEFAULT_SETTINGS: Settings = {
   continuousNew: true,
   theme: 'system',
   homeSort: 'updated',
-  lastCardType: 'note',
+  lastCardType: 'qa',
   lastCardColor: 'default',
   markerColor: 'yellow',
   ttsRate: 1,
