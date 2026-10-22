@@ -125,7 +125,7 @@ const lowlight = createLowlight(common);
 /** 编辑器用的全部扩展（不含 Placeholder 这类只影响界面的扩展，调用方自己追加）。 */
 export function editorExtensions(): AnyExtension[] {
   return [
-    StarterKit.configure({ code: false, codeBlock: false, trailingNode: false, link: { openOnClick: false } }),
+    StarterKit.configure({ code: false, codeBlock: false, trailingNode: false, link: { openOnClick: false, protocols: ['bnki'] } }),
     // ⌘E 留给挖空（Code 默认把 Mod-e 绑成行内代码）
     Code.extend({ addKeyboardShortcuts: () => ({}) }),
     CodeBlockLowlight.configure({ lowlight }),

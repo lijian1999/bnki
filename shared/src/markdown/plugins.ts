@@ -240,10 +240,11 @@ function addImage(md: MarkdownIt): void {
 }
 
 function addLink(md: MarkdownIt): void {
-  md.renderer.rules.link_open = (tokens, idx, options, _env, slf) => {
+  md.renderer.rules.link_open = (tokens, idx, options, env: { editor?: boolean } | undefined, slf) => {
     const token = tokens[idx];
     const href = token.attrGet('href') ?? '';
-    if (href.startsWith(CARD_LINK)) {
+    // 编辑器载入时保留原地址，否则存回去就丢了
+    if (href.startsWith(CARD_LINK) && !env?.editor) {
       token.attrSet('href', '#');
       token.attrSet('data-card-link', href.slice(CARD_LINK.length));
     } else {

@@ -497,3 +497,17 @@ describe('位置间隔', () => {
     expect(items.map((x) => x.front)).toEqual(fronts);
   });
 });
+
+describe('按 id 取条目', () => {
+  it('返回卡片；删除后 404', async () => {
+    const { app } = await buildApp({ dataDir: fs.mkdtempSync(path.join(os.tmpdir(), 'bnki-get-')), memory: true });
+    const deck = (await app.inject({ method: 'POST', url: '/api/decks', payload: {} })).json() as { id: string };
+    const card = (await app.inject({ method: 'POST', url: '/api/items', payload: { deckId: deck.id, kind: 'card', front: 'x' } })).json() as { id: string };
+    const r = await app.inject({ method: 'GET', url: `/api/items/${card.id}` });
+    expect(r.statusCode).toBe(200);
+    expect(r.json()).toMatchObject({ id: card.id, deckId: deck.id, front: 'x' });
+    await app.inject({ method: 'DELETE', url: `/api/decks/${deck.id}` });
+    expect((await app.inject({ method: 'GET', url: `/api/items/${card.id}` })).statusCode).toBe(404);
+    expect((await app.inject({ method: 'GET', url: '/api/items/nope' })).statusCode).toBe(404);
+  });
+});

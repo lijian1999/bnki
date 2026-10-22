@@ -150,6 +150,7 @@ export const api = {
   },
   items: {
     list: (deckId: ID) => request<Item[]>('GET', `/api/decks/${deckId}/items`),
+    get: (id: ID) => request<Item>('GET', `/api/items/${id}`),
     create: (body: ItemCreateBody) => request<Item>('POST', '/api/items', body),
     update: (id: ID, patch: ItemPatch) => request<Item>('PATCH', `/api/items/${id}`, patch),
     remove: (ids: ID[]) => request<{ ok: true }>('POST', '/api/items/delete', { ids }),

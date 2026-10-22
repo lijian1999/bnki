@@ -27,6 +27,7 @@ const SAMPLES = [
   '![](media/ab12.png)',
   '\\{{ 字面 \\==b \\$5',
   '---',
+  '见 [进程](bnki://card/abc123) 一节',
 ];
 
 describe('Markdown 往返', () => {

@@ -8,7 +8,7 @@ import { bnkiPlugin } from './plugins';
 import { countCloze as countClozeTokens, plainText as plainTextTokens } from './text';
 
 /** 一次渲染内的挖空编号，从 0 起 */
-type MdEnv = { clozeIndex: number };
+type MdEnv = { clozeIndex: number; editor?: boolean };
 
 // 两套实例常驻：编辑器不要代码高亮（还原后还要转回 Markdown）
 let cachedHighlighted: MarkdownIt | null = null;
@@ -43,7 +43,7 @@ function pick(highlight: boolean): MarkdownIt {
 
 export function renderMarkdown(src: string, opts?: { editor?: boolean }): string {
   if (!src) return '';
-  const env: MdEnv = { clozeIndex: 0 };
+  const env: MdEnv = { clozeIndex: 0, editor: !!opts?.editor };
   return pick(!opts?.editor).render(src, env);
 }
 

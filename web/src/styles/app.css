@@ -492,3 +492,4 @@ kbd { font: 12px ui-monospace, Menlo, monospace; background: var(--panel-2); bor
 .md [data-fs="16"] { font-size: 16px; }
 .md [data-fs="22"] { font-size: 22px; }
 .md [data-fs="26"] { font-size: 26px; }
+.dialog.mindmap-dialog { width: min(1000px, calc(100vw - 60px)); max-width: none; }

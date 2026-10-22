@@ -502,6 +502,16 @@ export default async function register(app: FastifyInstance, ctx: Ctx): Promise<
     return rows.map(rowToItem);
   });
 
+  // 卡片链接 bnki://card/<id> 靠它查所在卡片集；已删除的条目或卡片集当作不存在
+  app.get('/api/items/:id', async (req) => {
+    const item = itemOf(ctx, idOf(req));
+    const live = ctx.db.prepare(
+      'SELECT 1 FROM items i JOIN decks d ON d.id = i.deck_id WHERE i.id = ? AND i.deleted_at IS NULL AND d.deleted_at IS NULL',
+    ).get(item.id);
+    if (!live) throw notFound('条目不存在');
+    return item;
+  });
+
   app.post('/api/items', async (req) => {
     const b = bodyOf(req);
     const deckId = wantStr(b, 'deckId', 'deckId');

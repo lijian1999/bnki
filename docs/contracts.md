@@ -70,6 +70,7 @@
 | 方法 路径 | 请求 | 响应 / 行为 |
 |---|---|---|
 | `GET /api/decks/:id/items` | | `Item[]`，未删除，按 `position` 升序；卡片带 `state` |
+| `GET /api/items/:id` | | `Item`（带 `state`）。条目或所在卡片集已删除时 404。卡片链接 `bnki://card/<id>` 用它找所在卡片集 |
 | `POST /api/items` | `{ deckId, kind, afterId?, level?, title?, cardType?, front?, hint?, back?, color? }` | `Item`。位置：`afterId` 省略 = 末尾；`afterId: null` = 最前面；否则紧跟在 `afterId` 之后。默认值：目录 `level 1`、`title '新目录'`；卡片 `cardType 'note'`、`front/hint/back ''`、`color 'default'`。新建卡片写 `edit_logs`（`create`）。刷新卡片集 `updatedAt` |
 | `PATCH /api/items/:id` | `{ title?, level?, collapsed?, cardType?, front?, hint?, back?, color? }` | `Item`。卡片内容（`cardType/front/hint/back`）有变化时写 `edit_logs`（`update`）。除了只改 `collapsed`，都刷新卡片集 `updatedAt` 和本项 `updatedAt` |
 | `POST /api/items/delete` | `{ ids: ID[] }` | `{ ok: true }`，软删除（`deleted_at = now`）；卡片写 `edit_logs`（`delete`）。删目录只删标题，下面的卡片保留 |
