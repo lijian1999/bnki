@@ -50,6 +50,9 @@ export const DEFAULT_SETTINGS: Settings = {
   markerColor: 'yellow',
   ttsRate: 1,
   ttsLang: '',
+  ttsScope: 'visible',
+  ttsLangFilter: 'all',
+  ttsMode: 'once',
   dataDir: '',
 };
 

@@ -15,6 +15,9 @@ export type StudyDirection = 'front' | 'back' | 'random';
 export type FontSize = 'small' | 'default' | 'large' | 'xlarge';
 export type CardSize = 'default' | 'large' | 'wide' | 'full';
 export type Theme = 'light' | 'dark' | 'system';
+export type TtsScope = 'visible' | 'card'; // 朗读范围：当前可见 / 整张卡
+export type TtsLangFilter = 'all' | 'foreign'; // 全部语言 / 只读外语（跳过汉字）
+export type TtsMode = 'once' | 'continuous' | 'loop'; // 单次 / 连续 / 单卡循环
 export type Rating = 1 | 2 | 3 | 4; // 1 忘记了 2 模糊 3 记住了 4 很简单
 
 export type DeckSort =
@@ -161,6 +164,9 @@ export interface Settings {
   markerColor: string; // 最近一次用的马克笔：'yellow' | 'green' | 'blue' | 'red' | 'purple'
   ttsRate: number; // 朗读语速 0.8–1.2
   ttsLang: string; // 朗读语言，'' = 自动
+  ttsScope: TtsScope;
+  ttsLangFilter: TtsLangFilter;
+  ttsMode: TtsMode;
   dataDir: string; // 只读，服务端填
 }
 

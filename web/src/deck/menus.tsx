@@ -6,7 +6,7 @@ import type { MenuItem } from '../ui/menu';
 import { promptDialog } from '../ui/dialogs';
 import { sectionBlock } from './model';
 
-export type DeckDialogKind = 'studySettings' | 'import' | 'export' | 'mindmap' | 'shortcuts' | 'cover';
+export type DeckDialogKind = 'studySettings' | 'import' | 'export' | 'mindmap' | 'shortcuts' | 'cover' | 'ttsPrefs';
 
 export interface DeckActions {
   deckId: ID;

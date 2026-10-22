@@ -21,6 +21,9 @@ const ENUMS: Partial<Record<keyof Settings, readonly unknown[]>> = {
   theme: ['light', 'dark', 'system'],
   homeSort: ['name', 'updated', 'created', 'studied', 'next_due', 'card_count', 'fresh_count'],
   lastCardType: ['note', 'qa', 'topic'],
+  ttsScope: ['visible', 'card'],
+  ttsLangFilter: ['all', 'foreign'],
+  ttsMode: ['once', 'continuous', 'loop'],
 };
 const RANGES: Partial<Record<keyof Settings, [number, number]>> = {
   newPerDay: [0, 9999], reviewPerDay: [0, 99999], retention: [0.8, 0.97], maxIvl: [1, 36500], ttsRate: [0.5, 2],

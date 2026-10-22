@@ -12,7 +12,7 @@ export type StudyTarget =
   | { deckId: ID; viewer?: false; content?: StudyContent } // 学习一组：按学习设置生成队列；content 覆盖学习内容
   | { deckId: ID; viewer: true; cardIds: ID[]; cardId: ID }; // “全部卡片”查看器：按 cardIds 顺序浏览，从 cardId 开始
 
-export type DeckDialogKind = 'studySettings' | 'import' | 'export' | 'mindmap' | 'shortcuts' | 'cover';
+export type DeckDialogKind = 'studySettings' | 'import' | 'export' | 'mindmap' | 'shortcuts' | 'cover' | 'ttsPrefs';
 
 interface UIState {
   editor: EditorTarget | null;
