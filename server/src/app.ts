@@ -13,6 +13,9 @@ import registerSettings from './routes/settings';
 import registerMedia from './routes/media';
 import registerIo from './routes/io';
 import registerBackup from './routes/backup';
+import registerExport from './routes/export';
+import registerApkg from './routes/apkg';
+import registerSearch from './routes/search';
 
 export interface Ctx {
   /** 当前数据库连接。恢复备份时会被替换，所以路由里每次请求都要从 ctx.db 取，不要缓存。 */
@@ -79,6 +82,9 @@ export async function buildApp(opts: AppOptions): Promise<{ app: FastifyInstance
   await registerMedia(app, ctx);
   await registerIo(app, ctx);
   await registerBackup(app, ctx);
+  await registerExport(app, ctx);
+  await registerApkg(app, ctx);
+  await registerSearch(app, ctx);
 
   if (opts.webDir && fs.existsSync(opts.webDir)) {
     await app.register(fastifyStatic, { root: path.resolve(opts.webDir), prefix: '/', wildcard: false });

@@ -164,7 +164,7 @@ function addMath(md: MarkdownIt): void {
     if (silent) return true;
     state.line = line + 1;
     const token = state.push('math_block', 'math', 0);
-    token.content = content;
+    token.content = content.replace(/\n+$/, '');
     token.map = [startLine, state.line];
     return true;
   });

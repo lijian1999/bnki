@@ -4,7 +4,7 @@
 
 - 替换空壳：`web/src/pages/StatsPage.tsx`、`web/src/pages/SettingsPage.tsx`、`web/src/dialogs/ImportDialog.tsx`、`web/src/dialogs/ShortcutsDialog.tsx`。
 - 新建：`web/src/charts.tsx`（折线图、柱状图组件），测试 `web/src/pages/StatsPage.test.tsx`、`web/src/pages/SettingsPage.test.tsx`、`web/src/dialogs/ImportDialog.test.tsx`。
-- 需要新样式时追加到 `web/src/styles/app.css` 末尾（不改已有规则）。
+- 需要新样式时写进新建的 `web/src/styles/pages.css`，在本任务的组件文件里 `import '../styles/pages.css'`（路径按文件位置调整）；不要改 `app.css`。
 
 不要改别的文件。
 
@@ -72,7 +72,7 @@ npx vitest run --project web src/pages/StatsPage.test.tsx src/pages/SettingsPage
 ## 最后一步：收尾检查
 
 ```sh
-npx vitest run --project web && npx tsc -p web --noEmit
+npx vitest run --project web src/pages/StatsPage.test.tsx src/pages/SettingsPage.test.tsx src/dialogs/ImportDialog.test.tsx && npx tsc -p web --noEmit
 ```
 
-通过的标准：web 下全部测试通过；类型检查没有错误（如果类型错误只出在本任务以外的文件里，在结果里写明是哪个文件）；只改了上面列出的文件。全部通过后最后一行输出 `DONE`。
+通过的标准：本任务的测试全部通过；类型检查没有错误（如果类型错误只出在本任务以外的文件里，在结果里写明是哪个文件）；只改了上面列出的文件。全部通过后最后一行输出 `DONE`。

@@ -4,9 +4,9 @@
 
 - 替换空壳：`server/src/routes/export.ts`、`web/src/dialogs/ExportDialog.tsx`。
 - 新建：`server/src/routes/export.test.ts`、`web/src/dialogs/ExportDialog.test.tsx`；需要的话新建 `server/src/export/` 目录放各格式的生成函数。
-- 需要新样式时追加到 `web/src/styles/app.css` 末尾（不改已有规则）。
+- 需要新样式时写进新建的 `web/src/styles/export.css`，在本任务的组件文件里 `import '../styles/export.css'`（路径按文件位置调整）；不要改 `app.css`。
 
-不要改别的文件。`server/src/app.ts` 已经挂载了 `routes/export.ts` 的默认导出（`register(app, ctx)`）；`web/src/api.ts` 已有 `api.io.exportUrl(deckId, params)`。
+不要改别的文件。`server/src/app.ts` 已经挂载了 `routes/export.ts` 的默认导出（`register(app, ctx)`）；`web/src/api.ts` 已有 `api.io.exportUrl(deckId, params)`（参数里有 `inline?: 1`）。
 
 ## 第一步：接口 `GET /api/export/:deckId`
 
@@ -53,7 +53,6 @@ props `{ deckId, onClose }`。`Modal light`，宽 520px，`DialogHead` 标题 `�
 - 挖空（分段按钮）：保留挖空、显示答案。CSV、JSON 也适用。
 - 范围：`全部` / `选中目录` 两个分段按钮；选 `选中目录` 时下面列出卡片集的目录（`useItems(deckId)` 里的目录，按级别缩进，`.opt-list` 里的 `.opt` 多选样式），没选任何目录时下载按钮禁用。
 - 底部：`取消`；格式是 HTML 时多一个 `打印 / 存为 PDF` 按钮（`window.open(api.io.exportUrl(deckId, { …, inline: 1 }), '_blank')`）；`下载` 按钮：创建一个 `<a href={exportUrl} download>` 并点击，然后关闭对话框。
-- 如果 `api.io.exportUrl` 的参数类型里没有 `inline`，在本文件里自己拼接 `&inline=1`。
 
 测试（`ExportDialog.test.tsx`，`vi.stubGlobal('fetch', …)` 返回 items（目录 A、B 和两张卡片）、`QueryClientProvider` 包住）：默认点 `下载` → 创建的链接 `href` 是 `/api/export/d1?format=md&cloze=keep`（参数顺序可以不同，用 `URL` 解析后断言）；选 `CSV`、`显示答案`、`选中目录`、点 `B` 后下载 → `format=csv`、`cloze=answer`、`sections=B`；选中目录但一个都没选时 `下载` 按钮是 disabled。监听链接点击可以用 `vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function () { … this.href … })`。
 

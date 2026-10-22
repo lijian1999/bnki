@@ -486,3 +486,9 @@ input[type=range] { accent-color: var(--accent); }
 .kbd-table td { padding: 5px 0; border-bottom: 1px solid var(--line); }
 .kbd-table td:last-child { text-align: right; }
 kbd { font: 12px ui-monospace, Menlo, monospace; background: var(--panel-2); border: 1px solid var(--line-2); border-bottom-width: 2px; border-radius: 5px; padding: 0 5px; }
+
+/* 字号：<span data-fs> */
+.md [data-fs="12"] { font-size: 12px; }
+.md [data-fs="16"] { font-size: 16px; }
+.md [data-fs="22"] { font-size: 22px; }
+.md [data-fs="26"] { font-size: 26px; }

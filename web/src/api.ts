@@ -30,6 +30,15 @@ export interface Stats {
   retention: { actual: number | null; target: number; samples: number };
 }
 
+export interface SearchHit {
+  id: ID;
+  deckId: ID;
+  deckTitle: string;
+  cardType: CardType;
+  front: string;
+  text: string;
+}
+
 export interface DeckListParams {
   view?: 'all' | 'recent' | 'trash';
   folder?: string;
@@ -180,9 +189,11 @@ export const api = {
       return handle<{ cards: number; sections: number }>(res);
     },
     /** 导出下载链接；format: md|html|csv|json，cloze: keep|answer，sections: 逗号分隔的目录 id。 */
-    exportUrl: (deckId: ID, params: { format: string; cloze?: string; sections?: string }) =>
+    exportUrl: (deckId: ID, params: { format: string; cloze?: string; sections?: string; inline?: 1 }) =>
       `/api/export/${deckId}${qs(params)}`,
   },
+  /** 全局搜索卡片内容（contracts 3.10）。 */
+  search: (q: string, limit?: number) => request<SearchHit[]>('GET', `/api/search${qs({ q, limit })}`),
   backups: {
     list: () => request<{ name: string; createdAt: number; size: number }[]>('GET', '/api/backups'),
     create: () => request<{ name: string }>('POST', '/api/backup'),

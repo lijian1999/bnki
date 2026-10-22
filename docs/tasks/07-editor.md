@@ -4,7 +4,7 @@
 
 - 替换空壳：`web/src/editor/EditorModal.tsx`。
 - 新建：`web/src/editor/` 目录下的其他文件（工具栏、字段组件、公式对话框、命令函数等，怎么拆由你定）和测试 `web/src/editor/EditorModal.test.tsx`。
-- 需要新样式时追加到 `web/src/styles/app.css` 末尾（不改已有规则）。
+- 需要新样式时写进新建的 `web/src/styles/editor.css`，在本任务的组件文件里 `import '../styles/editor.css'`（路径按文件位置调整）；不要改 `app.css`。
 
 不要改别的文件，**`web/src/editor/schema.ts` 和 `schema.test.ts` 只读**。
 
@@ -111,7 +111,7 @@ npx vitest run --project web src/editor/EditorModal.test.tsx
 ## 最后一步：收尾检查
 
 ```sh
-npx vitest run --project web && npx tsc -p web --noEmit
+npx vitest run --project web src/editor && npx tsc -p web --noEmit
 ```
 
-通过的标准：web 下全部测试通过；类型检查没有错误（如果类型错误只出在本任务以外的文件里，在结果里写明是哪个文件）；只改了上面列出的文件。全部通过后最后一行输出 `DONE`。
+通过的标准：本任务的测试全部通过；类型检查没有错误（如果类型错误只出在本任务以外的文件里，在结果里写明是哪个文件）；只改了上面列出的文件。全部通过后最后一行输出 `DONE`。

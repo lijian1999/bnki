@@ -152,7 +152,11 @@
 - `POST /api/import/text`：`{ deckId, text, format: 'tsv' | 'csv', firstColumnIsSection: boolean }` → `{ cards: number, sections: number }`。用 `shared/src/importText.ts` 的 `parseImportText` 解析，追加到卡片集末尾。
 - `POST /api/import/markdown`：`{ deckId, text, split: 'item' | 'paragraph' | 'hr' }` → `{ cards: number, sections: number }`。
 - `POST /api/import/apkg`：multipart，字段 `file`（`.apkg`），查询参数 `deckId` → `{ cards: number, sections: number }`。
-- `GET /api/export/:deckId?format=md|html|csv|json&cloze=keep|answer&sections=<id,id>`：文件下载，`Content-Disposition: attachment; filename*=UTF-8''<urlencode(标题.扩展名)>`。
+- `GET /api/export/:deckId?format=md|html|csv|json&cloze=keep|answer&sections=<id,id>&inline=1`：文件下载，`Content-Disposition: attachment; filename*=UTF-8''<urlencode(标题.扩展名)>`；`inline=1` 时不加这个头（HTML 打印用）。
+
+### 3.10 搜索
+
+- `GET /api/search?q=<关键词>&limit=<1–100，默认 30>` → `{ id, deckId, deckTitle, cardType, front, text }[]`：在所有未删除卡片集的未删除卡片里，按正面、提示、背面去掉 Markdown 标记后的纯文本搜（忽略大小写和空白），最近修改的在前。`front` 是正面 Markdown 原文，`text` 是纯文本全文。空关键词返回 `[]`。
 
 ### 3.9 备份
 

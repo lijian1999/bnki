@@ -4,7 +4,7 @@
 
 - 替换空壳：`web/src/pages/DeckPage.tsx`。
 - 新建：`web/src/deck/` 目录下的文件（组件、钩子、纯函数，怎么拆由你定），其中必须有 `web/src/deck/model.ts` 和测试 `web/src/deck/model.test.ts`、`web/src/pages/DeckPage.test.tsx`。
-- 需要新样式时追加到 `web/src/styles/app.css` 末尾（不改已有规则）。
+- 需要新样式时写进新建的 `web/src/styles/deck.css`，在本任务的组件文件里 `import '../styles/deck.css'`（路径按文件位置调整）；不要改 `app.css`。
 
 不要改别的文件。请求层、查询钩子、通用浮层已经写好，直接用：`web/src/api.ts`（`api`）、`web/src/queries.ts`（`useDeck`、`useItems`、`useDecks`、`useSettings`、`useSaveSettings`、`invalidateDeck`）、`web/src/ui/`（`toast`、`openMenu`、`confirmDialog`、`promptDialog`、`Swatches`）、`web/src/format.ts`（`fmtDate`）、`web/src/store.ts`（`useUI`：`openEditor`、`openStudy`、`openDialog`）。Markdown 渲染用 `import { renderMarkdown, plainText } from '@bnki/shared/markdown'`；调度相关用 `@bnki/shared` 的 `isDue`、`schedCfgFor`、`resolveStudyCfg`、`CARD_COLORS`、`CONTENT_NAMES`。
 
@@ -127,7 +127,7 @@ npx vitest run --project web src/pages/DeckPage.test.tsx
 ## 最后一步：收尾检查
 
 ```sh
-npx vitest run --project web && npx tsc -p web --noEmit
+npx vitest run --project web src/pages/DeckPage.test.tsx src/deck && npx tsc -p web --noEmit
 ```
 
-通过的标准：web 下全部测试通过；类型检查没有错误（如果类型错误只出在本任务以外的文件里，在结果里写明是哪个文件）；只改了上面列出的文件。全部通过后最后一行输出 `DONE`。
+通过的标准：本任务的测试全部通过；类型检查没有错误（如果类型错误只出在本任务以外的文件里，在结果里写明是哪个文件）；只改了上面列出的文件。全部通过后最后一行输出 `DONE`。

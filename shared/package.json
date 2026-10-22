@@ -2,7 +2,7 @@
   "name": "@bnki/shared",
   "private": true,
   "type": "module",
-  "exports": { ".": "./src/index.ts", "./*": "./src/*.ts" },
+  "exports": { ".": "./src/index.ts", "./markdown": "./src/markdown/index.ts", "./*": "./src/*.ts" },
   "dependencies": {
     "highlight.js": "^11.11.1",
     "katex": "^0.16.25",

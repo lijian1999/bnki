@@ -92,7 +92,7 @@ npx vitest run --project server src/apkg src/routes/apkg.test.ts
 ## 最后一步：收尾检查
 
 ```sh
-npx vitest run --project server && npx tsc -p server --noEmit
+npx vitest run --project server src/apkg src/routes/apkg.test.ts && npx tsc -p server --noEmit
 ```
 
-通过的标准：server 下全部测试通过；类型检查没有错误（如果类型错误只出在本任务以外的文件里，在结果里写明是哪个文件）；只改了上面列出的文件。全部通过后最后一行输出 `DONE`。
+通过的标准：本任务的测试全部通过；类型检查没有错误（如果类型错误只出在本任务以外的文件里，在结果里写明是哪个文件）；只改了上面列出的文件。全部通过后最后一行输出 `DONE`。
