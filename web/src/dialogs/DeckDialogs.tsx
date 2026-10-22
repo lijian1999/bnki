@@ -6,6 +6,7 @@ import ShortcutsDialog from './ShortcutsDialog';
 import ExportDialog from './ExportDialog';
 import MindmapDialog from './MindmapDialog';
 import CoverDialog from './CoverDialog';
+import TtsPrefsDialog from './TtsPrefsDialog';
 
 const DIALOGS = {
   studySettings: StudySettingsDialog,
@@ -14,6 +15,7 @@ const DIALOGS = {
   export: ExportDialog,
   mindmap: MindmapDialog,
   cover: CoverDialog,
+  ttsPrefs: TtsPrefsDialog,
 };
 
 export default function DeckDialogs() {

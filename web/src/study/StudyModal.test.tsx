@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { DEFAULT_SETTINGS, DAY, type CardItem, type CardState, type DeckSummary, type Item } from '@bnki/shared';
+import { DEFAULT_SETTINGS, DAY, type CardItem, type CardState, type DeckSummary, type Item, type Settings } from '@bnki/shared';
 import StudyModal from './StudyModal';
 import Overlays from '../ui/Overlays';
 import { useUI } from '../store';
@@ -35,6 +35,10 @@ const qaCard: CardItem = {
   front: 'Q', hint: '', back: 'ANS', color: 'default', createdAt: 1, updatedAt: 1, state: null,
 };
 const items: Item[] = [noteCard, qaCard];
+
+/** 测试里可覆盖的 /api/settings 响应和列表数据；默认不影响已有用例。 */
+let settingsOverride: Partial<Settings> = {};
+let itemOverride: Item[] | null = null;
 
 /** 复习状态：评分接口一律返回它。 */
 const reviewed: CardState = {
@@ -71,9 +75,9 @@ function mockFetch(): void {
       calls.push({ url, method, body });
       const path = url.split('?')[0];
       let data: unknown = { ok: true };
-      if (path === '/api/settings') data = { ...DEFAULT_SETTINGS, fuzz: false };
+      if (path === '/api/settings') data = { ...DEFAULT_SETTINGS, fuzz: false, ...settingsOverride };
       else if (path === '/api/decks/d1') data = deck;
-      else if (path === '/api/decks/d1/items') data = items;
+      else if (path === '/api/decks/d1/items') data = itemOverride ?? items;
       else if (path === '/api/decks') data = [deck];
       else if (path === '/api/study/d1/session') data = session;
       else if (path === '/api/study/review') data = { state: reviewed, label: '3天', requeue: false };
@@ -113,6 +117,8 @@ async function openStudy(): Promise<void> {
 beforeEach(() => {
   calls = [];
   session = fullSession;
+  settingsOverride = {};
+  itemOverride = null;
   mockFetch();
   localStorage.setItem('bnki.studyIntroSeen', '1');
 });
@@ -219,5 +225,97 @@ describe('学习弹窗', () => {
     });
     await waitFor(() => expect(text()).toContain('全部卡片（2/2）'));
     expect(calls.some((c) => c.url.includes('/api/study/'))).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------- 朗读（按设置）
+
+/** 最小 SpeechSynthesisUtterance：记录 text，测试里可以手动调它的 onend。 */
+class FakeUtter {
+  text: string;
+  rate = 1;
+  lang = '';
+  onend: (() => void) | null = null;
+  constructor(text: string) {
+    this.text = text;
+  }
+}
+
+function stubSpeech(): { speak: ReturnType<typeof vi.fn>; cancel: ReturnType<typeof vi.fn> } {
+  const speak = vi.fn();
+  const cancel = vi.fn();
+  vi.stubGlobal('speechSynthesis', { speak, cancel });
+  vi.stubGlobal('SpeechSynthesisUtterance', FakeUtter);
+  return { speak, cancel };
+}
+
+const spokenText = (speak: ReturnType<typeof vi.fn>, i: number): string => (speak.mock.calls[i]?.[0] as FakeUtter | undefined)?.text ?? '';
+
+async function openViewer(ids: string[], start: string): Promise<void> {
+  act(() => {
+    useUI.getState().openStudy({ deckId: 'd1', viewer: true, cardIds: ids, cardId: start });
+  });
+  await waitFor(() => expect(text()).toContain('全部卡片'));
+}
+
+describe('朗读（按设置）', () => {
+  it('visible：问答卡未显示答案时只读题目那一面', async () => {
+    settingsOverride = { ttsScope: 'visible' };
+    const { speak } = stubSpeech();
+    renderStudy();
+    await openViewer(['c2'], 'c2');
+    act(() => keyDown('r'));
+    expect(speak).toHaveBeenCalledTimes(1);
+    expect(spokenText(speak, 0)).toBe('Q');
+    expect(spokenText(speak, 0)).not.toContain('ANS');
+  });
+
+  it('card：问答卡正面和背面都读', async () => {
+    settingsOverride = { ttsScope: 'card' };
+    const { speak } = stubSpeech();
+    renderStudy();
+    await openViewer(['c2'], 'c2');
+    act(() => keyDown('r'));
+    expect(spokenText(speak, 0)).toBe('Q。ANS');
+  });
+
+  it('loop：单卡循环，onend 后再读一遍同一张卡', async () => {
+    settingsOverride = { ttsMode: 'loop' };
+    const { speak } = stubSpeech();
+    renderStudy();
+    await openViewer(['c2'], 'c2');
+    act(() => keyDown('r'));
+    expect(speak).toHaveBeenCalledTimes(1);
+    const u = speak.mock.calls[0]?.[0] as FakeUtter;
+    act(() => {
+      u.onend?.();
+    });
+    await waitFor(() => expect(speak).toHaveBeenCalledTimes(2));
+    expect(spokenText(speak, 1)).toBe(spokenText(speak, 0));
+    // 停止朗读后不会再续
+    act(() => {
+      u.onend?.();
+    });
+  });
+
+  it('语言筛选 foreign：跳过汉字', async () => {
+    settingsOverride = { ttsLangFilter: 'foreign' };
+    itemOverride = [
+      ...items,
+      { id: 'c3', deckId: 'd1', kind: 'card', position: 3, cardType: 'qa', front: '苹果 apple', hint: '', back: '苹果', color: 'default', createdAt: 1, updatedAt: 1, state: null },
+    ];
+    const { speak } = stubSpeech();
+    renderStudy();
+    await openViewer(['c3'], 'c3');
+    act(() => keyDown('r'));
+    expect(speak).toHaveBeenCalledTimes(1);
+    expect(spokenText(speak, 0)).toBe('apple');
+  });
+
+  it('不支持朗读时提示，不建语音', async () => {
+    renderStudy();
+    await openViewer(['c2'], 'c2');
+    act(() => keyDown('r'));
+    expect(await screen.findByText('浏览器不支持朗读')).toBeTruthy();
   });
 });

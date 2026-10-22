@@ -18,9 +18,10 @@ import {
   type Item,
   type SectionItem,
 } from '@bnki/shared';
-import { plainText, renderMarkdown } from '@bnki/shared/markdown';
+import { renderMarkdown } from '@bnki/shared/markdown';
 import { api } from '../api';
 import { invalidateDeck, useDecks, useDeck, useItems, useSaveSettings, useSettings } from '../queries';
+import { canSpeak, ttsText, utter } from '../tts';
 import { openMenu } from '../ui/menu';
 import { toast } from '../ui/toast';
 import { confirmDialog } from '../ui/dialogs';
@@ -763,8 +764,12 @@ export default function DeckPage() {
     window.addEventListener('mouseup', onUp);
   };
 
-  // 朗读：整集或选中的卡片，一张一条语音
-  const speakText = (c: CardItem): string => (c.cardType === 'qa' ? `${plainText(c.front)}。${plainText(c.back)}` : plainText(c.front));
+  // 朗读：整集或选中的卡片，一张一条语音；空文本的卡跳过。
+  // 范围 visible 时跟卡片网格的显示状态走：答案关着时问答卡（和其他卡的背面）只读正面。
+  const speakText = (c: CardItem): string => {
+    const backShown = settings.ttsScope === 'card' || c.cardType === 'topic' || disp.showAnswer;
+    return ttsText(backShown && c.back ? `${c.front}。${c.back}` : c.front, settings);
+  };
 
   const stopSpeak = (): void => {
     speakQueueRef.current = [];
@@ -776,7 +781,9 @@ export default function DeckPage() {
   const speakFrom = (i: number): void => {
     const list = speakQueueRef.current;
     if (i >= list.length) {
-      stopSpeak();
+      // 单卡循环：读完最后一张从第一张重新开始，直到再点 🔈 或离开页面
+      if (settings.ttsMode === 'loop' && list.length) speakFrom(0);
+      else stopSpeak();
       return;
     }
     const c = list[i];
@@ -786,9 +793,7 @@ export default function DeckPage() {
       el.classList.add('speaking');
       el.scrollIntoView({ block: 'nearest' });
     }
-    const u = new SpeechSynthesisUtterance(speakText(c));
-    u.rate = settings.ttsRate;
-    if (settings.ttsLang) u.lang = settings.ttsLang;
+    const u = utter(speakText(c), settings);
     u.onend = () => {
       if (speakQueueRef.current === list) speakFrom(i + 1);
     };
@@ -796,7 +801,7 @@ export default function DeckPage() {
   };
 
   const toggleSpeak = (): void => {
-    if (!('speechSynthesis' in window) || typeof SpeechSynthesisUtterance === 'undefined') {
+    if (!canSpeak()) {
       toast('浏览器不支持朗读');
       return;
     }
@@ -806,7 +811,7 @@ export default function DeckPage() {
     }
     const cards = items.filter((x): x is CardItem => x.kind === 'card');
     const chosen = cards.filter((c) => selRef.current.has(c.id));
-    const list = (chosen.length ? chosen : cards).filter((c) => speakText(c).trim());
+    const list = (chosen.length ? chosen : cards).filter((c) => speakText(c) !== '');
     if (!list.length) return;
     speakQueueRef.current = list;
     setSpeakOn(true);

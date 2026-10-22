@@ -344,6 +344,8 @@ textarea.text-input { height: auto; padding: 8px 10px; font-family: ui-monospace
 .md { word-break: break-word; }
 .md > :first-child { margin-top: 0; }
 .md > :last-child { margin-bottom: 0; }
+/* 卡片链接折行时，行与行之间的空隙也算点在链接上（行内的上下内边距不改变排版） */
+.md a[data-card-link] { padding-block: 0.25em; }
 .md p { margin: 0 0 8px; }
 .md h1 { font-size: 1.45em; margin: 8px 0; }
 .md h2 { font-size: 1.25em; margin: 8px 0; }
@@ -483,3 +485,5 @@ kbd { font: 12px ui-monospace, Menlo, monospace; background: var(--panel-2); bor
 .md [data-fs="22"] { font-size: 22px; }
 .md [data-fs="26"] { font-size: 26px; }
 .dialog.mindmap-dialog { width: min(1000px, calc(100vw - 60px)); max-width: none; }
+.dialog.tts-prefs-dialog { width: min(620px, calc(100vw - 32px)); max-width: none; }
+.set-row .seg { flex-shrink: 0; }

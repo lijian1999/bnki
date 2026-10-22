@@ -17,36 +17,16 @@ import { Modal, DialogHead } from '../ui/Modal';
 import { confirmDialog } from '../ui/dialogs';
 import { toast } from '../ui/toast';
 import { fmtMDHM } from '../format';
+import { TtsPrefsRows } from '../dialogs/TtsPrefsDialog';
+import { Row, Seg } from '../ui/settingRows';
 import '../styles/pages.css';
 
 function errText(e: unknown): string {
   return typeof e === 'object' && e !== null && 'message' in e && typeof e.message === 'string' && e.message ? e.message : '操作失败';
 }
 
-function Row(props: { title: ReactNode; desc?: ReactNode; children: ReactNode }): JSX.Element {
-  return (
-    <div className="set-row">
-      <div className="l">
-        <b>{props.title}</b>
-        {props.desc && <span>{props.desc}</span>}
-      </div>
-      {props.children}
-    </div>
-  );
-}
 
 /** 分段选择；值用字符串比较，数字型也能对上。 */
-function Seg<T extends string | number>(props: { value: T; options: [T, string][]; onPick: (v: T) => void }): JSX.Element {
-  return (
-    <div className="seg">
-      {props.options.map(([v, label]) => (
-        <button key={String(v)} className={String(props.value) === String(v) ? 'on' : ''} onClick={() => props.onPick(v)}>
-          {label}
-        </button>
-      ))}
-    </div>
-  );
-}
 
 function Switch(props: { on: boolean; onToggle: () => void }): JSX.Element {
   return <button className={'switch' + (props.on ? ' on' : '')} onClick={props.onToggle} />;
@@ -241,25 +221,7 @@ export default function SettingsPage() {
 
       <div className="set-group">
         <h3>朗读偏好</h3>
-        <Row title="语速">
-          <Seg
-            value={settings.ttsRate}
-            options={[[0.8, '0.8'], [1, '1.0'], [1.2, '1.2']]}
-            onPick={(v) => save({ ttsRate: v })}
-          />
-        </Row>
-        <Row title="语言">
-          <select
-            className="select-input"
-            value={settings.ttsLang}
-            onChange={(e) => save({ ttsLang: e.target.value })}
-          >
-            <option value="">自动</option>
-            <option value="zh-CN">中文</option>
-            <option value="en-US">英语</option>
-            <option value="ja-JP">日语</option>
-          </select>
-        </Row>
+        <TtsPrefsRows />
       </div>
 
       <div className="set-group">

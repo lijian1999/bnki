@@ -15,6 +15,7 @@ import { Modal } from '../ui/Modal';
 import { openMenu } from '../ui/menu';
 import { toast } from '../ui/toast';
 import { fmtMDHM } from '../format';
+import { canSpeak, hideClozes, ttsText, utter } from '../tts';
 import { customTimeMenu, studyMenu, type StudyOps } from './studyMenus';
 import { errText } from './util';
 import StudyIntro from './StudyIntro';
@@ -88,6 +89,14 @@ function StudyView(props: { target: StudyTarget }): JSX.Element | null {
   const startAt = useRef(Date.now()); // 本次学习开始
   const cardStart = useRef(Date.now()); // 这张卡开始显示的时间（评分时长用）
   const results = useRef<Record<number, number>>({ 1: 0, 2: 0, 3: 0, 4: 0 });
+
+  // 朗读状态：递增序号让过期的 onend 失效；active 表示“朗读进行中”（自动续读和按钮 on 都看它）
+  const speakSeq = useRef(0);
+  const speakActive = useRef(false);
+  const speakLoopText = useRef('');
+  const posRef = useRef(pos);
+  posRef.current = pos;
+  const [speaking, setSpeaking] = useState(false);
 
   const entry = pos.queue[pos.idx];
   const cardId = entry?.cardId;
@@ -181,6 +190,18 @@ function StudyView(props: { target: StudyTarget }): JSX.Element | null {
     counter.classList.toggle('hidden', els.length === 0);
     counter.textContent = `挖空 ${els.filter((_, i) => view.revealed.has(i)).length}/${els.length}　V`;
   });
+
+  // 朗读中换卡：连续模式接着读新卡；单卡循环停止；单次不打断当前这条语音。
+  // 关闭学习弹窗（组件卸载）时停止朗读。
+  useEffect(() => {
+    if (!speakActive.current) return;
+    const mode = settings?.ttsMode ?? 'once';
+    if (mode === 'loop') stopSpeak();
+    else if (mode === 'continuous') continueSpeak();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cardId, pos.idx, pos.done]);
+
+  useEffect(() => () => void window.speechSynthesis?.cancel(), []);
 
   if (!ready || !resolved || !settings || !cfg) return <Modal raw onClose={close}>{null}</Modal>;
   // 条目还没加载出来时先不出卡（查看器只有 items 这一个内容来源）
@@ -296,16 +317,72 @@ function StudyView(props: { target: StudyTarget }): JSX.Element | null {
   };
 
   const speak = (c: CardItem, answered: boolean, qSide: string): void => {
-    if (!('speechSynthesis' in window) || typeof SpeechSynthesisUtterance === 'undefined') {
+    if (speakActive.current) {
+      stopSpeak(); // 朗读中再按 R / 再点 🔈 = 停止
+      return;
+    }
+    if (!canSpeak()) {
       toast('浏览器不支持朗读');
       return;
     }
-    const src = c.cardType === 'qa' && !answered ? qSide : [c.front, c.back].join('。');
-    window.speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(plainText(src));
-    u.rate = settings.ttsRate;
-    if (settings.ttsLang) u.lang = settings.ttsLang;
-    window.speechSynthesis.speak(u);
+    const text = ttsText(speakTextFor(c, answered, qSide), settings);
+    if (!text) {
+      toast('没有可朗读的内容');
+      return;
+    }
+    readAloud(c, text);
+  };
+
+  const stopSpeak = (): void => {
+    speakActive.current = false;
+    speakSeq.current += 1; // 作废在途的 onend
+    window.speechSynthesis?.cancel();
+    setSpeaking(false);
+  };
+
+  /** 开始一条语音；onend 里按开始时的模式走下一步，序号对不上说明已经被新的朗读/停止取代。 */
+  const readAloud = (c: CardItem, text: string): void => {
+    const seq = ++speakSeq.current;
+    const mode = settings.ttsMode;
+    speakLoopText.current = text;
+    speakActive.current = true;
+    setSpeaking(true);
+    window.speechSynthesis?.cancel(); // 每次开始新语音前先清掉队列
+    const u = utter(text, settings);
+    u.onend = () => {
+      if (seq !== speakSeq.current) return;
+      if (mode === 'loop') readAloud(c, speakLoopText.current); // 反复读这张直到停止或换卡
+      else if (mode === 'continuous') {
+        const p = posRef.current;
+        if (p.idx + 1 < p.queue.length) go(1); // 换到新卡后由卡片切换的 effect 接着读
+        else stopSpeak();
+      } else stopSpeak();
+    };
+    window.speechSynthesis?.speak(u);
+  };
+
+  /** 当前卡的朗读文本：按范围取“整张卡”或界面上已显示的部分，挖空按揭示状态处理。 */
+  const speakTextFor = (c: CardItem, answered: boolean, qSide: string): string => {
+    if (settings.ttsScope === 'card') {
+      if (c.cardType === 'qa') return `${c.front}。${c.back}`;
+      return c.back ? `${c.front}。${c.back}` : c.front;
+    }
+    if (c.cardType === 'qa') return answered ? `${qSide}。${aSrc}` : qSide;
+    const shown = hideClozes(c.front, view.revealed);
+    // 主题卡显示了内容才读背面；笔记卡的背面在学习弹窗里没有显示状态，不读
+    if (c.cardType === 'topic' && view.topic) return `${shown}。${c.back}`;
+    return shown;
+  };
+
+  /** 连续模式换到新卡：立刻读它；没有卡可读就停。 */
+  const continueSpeak = (): void => {
+    if (!card || done) {
+      stopSpeak();
+      return;
+    }
+    const text = ttsText(speakTextFor(card, view.ans, qSrc), settings);
+    if (text) readAloud(card, text);
+    else stopSpeak();
   };
 
   const ops = (c: CardItem): StudyOps => ({
@@ -426,7 +503,7 @@ function StudyView(props: { target: StudyTarget }): JSX.Element | null {
                   {label}（{pos.idx + 1}/{pos.queue.length}）· {CARD_TYPE_NAMES[card.cardType]}
                 </span>
                 <span style={{ width: 100, display: 'flex', justifyContent: 'flex-end' }}>
-                  <button className="icon-btn" onClick={() => speak(card, view.ans, qSrc)} title="朗读（R）">🔈</button>
+                  <button className={`icon-btn${speaking ? ' on' : ''}`} onClick={() => speak(card, view.ans, qSrc)} title={speaking ? '停止朗读' : '朗读（R）'}>🔈</button>
                   <button className="icon-btn" onClick={() => openEditor({ deckId, cardId: card.id })} title="编辑（E）">✎</button>
                   <button
                     className="icon-btn"

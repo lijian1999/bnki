@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { DEFAULT_SETTINGS, type CardItem, type CardState, type DeckSummary, type Item } from '@bnki/shared';
+import { DEFAULT_SETTINGS, type CardItem, type CardState, type DeckSummary, type Item, type Settings } from '@bnki/shared';
 import { plainText } from '@bnki/shared/markdown';
 import DeckPage from './DeckPage';
 import Overlays from '../ui/Overlays';
@@ -35,6 +35,7 @@ function deckOf(): DeckSummary {
 }
 
 let deckObj: DeckSummary;
+let settingsOverride: Partial<Settings> = {};
 
 function mockFetch() {
   const url = (u: unknown) => String(u).split('?')[0];
@@ -51,7 +52,7 @@ function mockFetch() {
       }
       calls.push({ url: path, method, body });
       const json = (data: unknown) => ({ ok: true, status: 200, json: async () => data }) as Response;
-      if (path === '/api/settings') return json(DEFAULT_SETTINGS);
+      if (path === '/api/settings') return json({ ...DEFAULT_SETTINGS, ...settingsOverride });
       if (path === '/api/folders') return json([]);
       if (path === '/api/decks') return json([deckObj]);
       if (path === '/api/decks/d1' && method === 'GET') return json(deckObj);
@@ -99,6 +100,7 @@ beforeEach(() => {
   calls = [];
   itemsArr = baseItems();
   deckObj = deckOf();
+  settingsOverride = {};
   mockFetch();
 });
 
@@ -218,5 +220,73 @@ describe('卡片集页', () => {
     expect(stop).toBeTruthy();
     fireEvent.click(stop!);
     await waitFor(() => expect(cancel).toHaveBeenCalled());
+  });
+});
+
+// ---------------------------------------------------------------- 朗读（按设置）
+
+/** 最小 SpeechSynthesisUtterance：记录 text，测试里可以手动调它的 onend。 */
+class FakeUtter {
+  text: string;
+  rate = 1;
+  lang = '';
+  onend: (() => void) | null = null;
+  constructor(text: string) {
+    this.text = text;
+  }
+}
+
+function stubSpeech(): { speak: ReturnType<typeof vi.fn>; cancel: ReturnType<typeof vi.fn> } {
+  const speak = vi.fn();
+  const cancel = vi.fn();
+  vi.stubGlobal('speechSynthesis', { speak, cancel });
+  vi.stubGlobal('SpeechSynthesisUtterance', FakeUtter);
+  return { speak, cancel };
+}
+
+const spokenText = (speak: ReturnType<typeof vi.fn>, i: number): string => (speak.mock.calls[i]?.[0] as FakeUtter | undefined)?.text ?? '';
+
+function clickSpeakBtn(): void {
+  const btn = Array.from(document.querySelectorAll('.icon-btn')).find((b) => b.getAttribute('title') === '朗读');
+  expect(btn).toBeTruthy();
+  fireEvent.click(btn!);
+}
+
+describe('朗读（按设置）', () => {
+  it('loop：读完最后一张从第一张重新开始', async () => {
+    Element.prototype.scrollIntoView = vi.fn();
+    const { speak } = stubSpeech();
+    settingsOverride = { ttsMode: 'loop' };
+    renderDeck();
+    await waitTitle();
+    clickSpeakBtn();
+    await waitFor(() => expect(speak).toHaveBeenCalledTimes(1));
+    const u1 = speak.mock.calls[0]?.[0] as FakeUtter;
+    act(() => u1.onend?.());
+    await waitFor(() => expect(speak).toHaveBeenCalledTimes(2));
+    const u2 = speak.mock.calls[1]?.[0] as FakeUtter;
+    act(() => u2.onend?.());
+    await waitFor(() => expect(speak).toHaveBeenCalledTimes(3));
+    // 第三条 = 回到第一张卡
+    const first = itemsArr.find((x) => x.kind === 'card') as CardItem;
+    expect(spokenText(speak, 2)).toBe(plainText(first.front));
+    expect(spokenText(speak, 2)).toBe(spokenText(speak, 0));
+  });
+
+  it('visible 且答案关着：问答卡只读正面', async () => {
+    Element.prototype.scrollIntoView = vi.fn();
+    const { speak } = stubSpeech();
+    settingsOverride = { ttsScope: 'visible' };
+    deckObj = { ...deckObj, displayCfg: { ...deckObj.displayCfg, showAnswer: false } };
+    renderDeck();
+    await waitTitle();
+    clickSpeakBtn();
+    await waitFor(() => expect(speak).toHaveBeenCalledTimes(1));
+    // 第一张是笔记卡，触发它的 onend 才轮到问答卡
+    act(() => (speak.mock.calls[0]?.[0] as FakeUtter).onend?.());
+    await waitFor(() => expect(speak).toHaveBeenCalledTimes(2));
+    const qa = itemsArr.find((x) => x.kind === 'card' && x.cardType === 'qa') as CardItem;
+    expect(spokenText(speak, 1)).toBe(plainText(qa.front));
+    expect(spokenText(speak, 1)).not.toContain('答案2');
   });
 });

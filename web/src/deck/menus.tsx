@@ -121,6 +121,7 @@ export function deckMenu(a: DeckActions): MenuItem[] {
     { label: '导出', icon: '⇩', onClick: () => a.openDialog('export', a.deckId) },
     '-',
     { label: '学习设置', icon: '⚙', onClick: () => a.openDialog('studySettings', a.deckId) },
+    { label: '朗读偏好', icon: '🔈', onClick: () => a.openDialog('ttsPrefs', a.deckId) },
     { label: '重新开始学习', icon: '⟲', onClick: () => a.resetProgress() },
     '-',
     {

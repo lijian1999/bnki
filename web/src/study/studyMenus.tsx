@@ -95,6 +95,7 @@ export function studyMenu(ops: StudyOps, decks: DeckSummary[]): MenuItem[] {
   const cur = resolveStudyCfg(ops.deck?.studyCfg, ops.settings);
   return [
     { label: '学习设置', icon: '⚙', onClick: () => useUI.getState().openDialog('studySettings', ops.deckId) },
+    { label: '朗读偏好', icon: '🔈', onClick: () => useUI.getState().openDialog('ttsPrefs', ops.deckId) },
     '-',
     {
       label: '卡片颜色',
