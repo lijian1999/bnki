@@ -11,10 +11,15 @@ export function hideClozes(src: string, revealed: ReadonlySet<number>): string {
 
 /** 只读外语：去掉汉字（Unicode Script=Han）和全角标点（U+3000–U+303F、U+FF00–U+FFEF），连续空白压成一个空格，首尾去空白。 */
 export function foreignOnly(text: string): string {
-  return text
-    .replace(/[\p{Script=Han}\u3000-\u303F\uFF00-\uFFEF]/gu, '')
+  const out = text
+    // 换成空格而不是直接删：“1+1=?。2”里的句号去掉后两边不能粘在一起
+    .replace(/[\p{Script=Han}\u3000-\u303F\uFF00-\uFFEF]/gu, ' ')
+    // 汉字去掉后剩下的空括号（如图片占位“[图片]”）不读
+    .replace(/[[(（【]\s*[\])）】]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+  // 只剩标点、没有字母数字时就当没有可读的
+  return /[\p{L}\p{N}]/u.test(out) ? out : '';
 }
 
 /** 按设置做朗读前的最后处理：先转纯文本，`ttsLangFilter` 是 'foreign' 时再跳过汉字，最后 trim。 */

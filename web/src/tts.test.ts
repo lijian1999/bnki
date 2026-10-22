@@ -22,6 +22,13 @@ describe('foreignOnly', () => {
   it('全是汉字时得到空串', () => {
     expect(foreignOnly('苹果香蕉')).toBe('');
   });
+  it('去掉的全角标点两边不粘在一起', () => {
+    expect(foreignOnly('1+1=?。2')).toBe('1+1=? 2');
+  });
+  it('只剩空括号或标点时得到空串', () => {
+    expect(foreignOnly('带图 [图片]')).toBe('');
+    expect(foreignOnly('see [图片] here')).toBe('see here');
+  });
 });
 
 describe('ttsText', () => {
