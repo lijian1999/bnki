@@ -1,0 +1,15 @@
+/* 首页全局搜索：卡片内容命中列表 */
+.search-hits { margin-top: 20px; }
+.search-hits .sh-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 4px; }
+.search-hits .sh-head h3 { margin: 0; font-size: 13px; font-weight: 500; color: var(--text-2); }
+.search-hits .sh-count { color: var(--text-3); font-size: 12px; }
+.search-hits .sh-none { color: var(--text-3); font-size: 12px; padding: 6px 0; }
+.search-hits .search-hit {
+  display: flex; flex-direction: column; align-items: flex-start;
+  padding: 8px 6px; cursor: pointer; border-bottom: 1px solid var(--line);
+}
+.search-hits .search-hit:last-child { border-bottom: 0; }
+.search-hits .search-hit:hover { background: var(--panel-2); }
+.search-hits .search-hit .sh-deck { color: var(--text-3); font-size: 11px; margin-bottom: 2px; }
+.search-hits .search-hit .sh-text { font-size: 13px; line-height: 1.5; }
+.search-hits mark.hit { background: #fff1a8; color: inherit; border-radius: 2px; }

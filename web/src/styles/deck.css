@@ -2,3 +2,39 @@
 .section-h.dragging {
   opacity: 0.4;
 }
+
+/* 卡片链接跳转过来时闪一下：起点是强调色，渐渐淡回卡片自己的颜色 */
+.flash {
+  animation: card-flash 1.6s ease-out 1;
+}
+@keyframes card-flash {
+  from {
+    background-color: var(--accent-soft);
+    box-shadow: inset 0 0 0 100vmax var(--accent-soft), var(--shadow);
+  }
+  /* 背景色回到元素自己的值；遮罩靠 inset 阴影淡出，渐变底色的卡也能看见 */
+  to {
+    box-shadow: inset 0 0 0 100vmax transparent, var(--shadow);
+  }
+}
+
+/* 框选：跟随鼠标的选框，拖动时正文不能被选中 */
+.marquee {
+  position: fixed;
+  z-index: 30;
+  border: 1px solid var(--accent);
+  background: var(--accent-soft);
+  pointer-events: none;
+}
+body.marqueeing {
+  user-select: none;
+}
+
+/* 正在朗读的那张卡 */
+.speaking {
+  outline: 2px solid var(--accent);
+}
+.icon-btn.on {
+  background: var(--accent-soft);
+  color: var(--accent);
+}

@@ -17,6 +17,7 @@ import { toast } from '../ui/toast';
 import { fmtMDHM } from '../format';
 import { customTimeMenu, studyMenu, type StudyOps } from './studyMenus';
 import { errText } from './util';
+import StudyIntro from './StudyIntro';
 import type { SchedCfg } from '@bnki/shared';
 import type { JSX } from 'react';
 
@@ -52,7 +53,13 @@ export default function StudyModal(): JSX.Element | null {
   const key = target.viewer
     ? `v:${target.deckId}:${target.cardIds.join(',')}:${target.cardId}`
     : `s:${target.deckId}:${target.content ?? ''}`;
-  return <StudyView key={key} target={target} />;
+  // 说明框排在学习弹窗后面挂载，才在浮层栈的最上层
+  return (
+    <>
+      <StudyView key={key} target={target} />
+      {!target.viewer && <StudyIntro />}
+    </>
+  );
 }
 
 function StudyView(props: { target: StudyTarget }): JSX.Element | null {

@@ -7,6 +7,7 @@ import {
 } from '@bnki/shared';
 import { plainText } from '@bnki/shared/markdown';
 import type { Editor } from '@tiptap/core';
+import type { Mark } from '@tiptap/pm/model';
 import { api } from '../api';
 import { invalidateDeck, useItems, useSaveSettings, useSettings } from '../queries';
 import { useUI, type EditorTarget } from '../store';
@@ -18,6 +19,8 @@ import { toast } from '../ui/toast';
 import { RichField, TopicFields } from './fields';
 import Toolbar from './Toolbar';
 import FormulaDialog from './FormulaDialog';
+import CardLinkPicker from './CardLinkPicker';
+import { applyFormat, captureFormat } from './painter';
 import { docToMarkdown } from './schema';
 import {
   activeState, applyBlock, applyCmd, applyFontSize, applyMarker, applyTextColor, clearMarker,
@@ -26,6 +29,9 @@ import {
 } from './commands';
 import '../styles/editor.css';
 import type { JSX } from 'react';
+
+/** 格式刷的状态：连续用还是用一次，以及刷的格式。 */
+type Painter = { sticky: boolean; marks: Mark[] };
 
 const colorHex = (c: CardColor): string => CARD_COLORS.find((x) => x.key === c)?.hex ?? '#ffffff';
 
@@ -96,6 +102,9 @@ function EditorBody(props: {
   const [active, setActive] = useState<FieldKey | null>(null);
   const [, setTick] = useState(0);
   const [formula, setFormula] = useState(false);
+  const [paint, setPaint] = useState<Painter | null>(null);
+  const [cardLink, setCardLink] = useState<{ field: FieldKey; from: number } | null>(null);
+  const paintRef = useRef<Painter | null>(null);
   const editors = useRef<Partial<Record<FieldKey, Editor | null>>>({});
   const inputs = useRef<Partial<Record<FieldKey, HTMLTextAreaElement | HTMLInputElement | null>>>({});
   const activeRef = useRef<FieldKey | null>(null);
@@ -113,6 +122,24 @@ function EditorBody(props: {
   }, []);
 
   const bump = (): void => setTick((n) => n + 1);
+
+  // 格式刷：只在字段里松手时动手；选区要等 mouseup 之后才落到编辑器状态里，下一拍再取
+  useEffect(() => {
+    if (!paint) return;
+    const onUp = (e: MouseEvent): void => {
+      const el = e.target instanceof Element ? e.target : null;
+      if (!el || !el.closest('.wysiwyg')) return;
+      setTimeout(() => {
+        const p = paintRef.current;
+        if (!p) return;
+        const ed = quietEditor();
+        if (!ed || !applyFormat(ed, p.marks)) return;
+        if (!p.sticky) setPainter(null);
+      }, 0);
+    };
+    document.addEventListener('mouseup', onUp);
+    return () => document.removeEventListener('mouseup', onUp);
+  }, [paint]);
 
   /** 这个字段是不是纯文本形态（主题卡、源码模式，和没显示出来的字段）。 */
   const isSource = (f: FieldKey): boolean => !shown(f) || st.type === 'topic' || !!st.src[f];
@@ -423,6 +450,68 @@ function EditorBody(props: {
     focusField(fields[(i + 1) % fields.length]);
   }
 
+  /** 当前字段的所见即所得编辑器；拿不到就算了，调用方自己提示。 */
+  function quietEditor(): Editor | null {
+    const t = activeTarget();
+    return t && t.kind === 'wysiwyg' ? t.ed : null;
+  }
+
+  function setPainter(next: Painter | null): void {
+    paintRef.current = next;
+    setPaint(next);
+  }
+
+  /** 进刷子时先从当前选区 capture 格式；已经在刷子里再点就是退出，但双击的第二下是转连续。 */
+  function painter(sticky: boolean): void {
+    const cur = paintRef.current;
+    if (cur) {
+      setPainter(sticky && !cur.sticky ? { sticky: true, marks: cur.marks } : null);
+      return;
+    }
+    const ed = quietEditor();
+    if (!ed) {
+      toast(activeTarget() ? '源码模式下请直接写 Markdown' : '先点一下要编辑的输入框');
+      return;
+    }
+    setPainter({ sticky, marks: captureFormat(ed) });
+  }
+
+  /** 选中一条结果：[[ 换成带卡片链接的文字，光标落在后面。 */
+  function pickCardLink(hit: { id: string; label: string }): void {
+    const rec = cardLink;
+    setCardLink(null);
+    if (!rec) return;
+    const ed = editors.current[rec.field];
+    if (!ed) return;
+    const from = Math.max(rec.from - 2, 0);
+    const href = 'bnki://card/' + hit.id;
+    ed
+      .chain()
+      .focus()
+      .setTextSelection({ from, to: rec.from })
+      .insertContent({ type: 'text', text: hit.label, marks: [{ type: 'link', attrs: { href } }] })
+      .setTextSelection(from + hit.label.length)
+      // 链接 mark 会向后延伸，接着打的字不该进链接
+      .unsetMark('link')
+      .run();
+  }
+
+  /** 没选就走：[[ 留着，编辑器重新拿回焦点。 */
+  function closeCardLink(): void {
+    const rec = cardLink;
+    setCardLink(null);
+    if (rec) editors.current[rec.field]?.chain().focus().run();
+  }
+
+  /** 刷子在身上的时候 Esc、点遮罩只退出刷子，不关编辑器。 */
+  function closeOrExitPainter(): void {
+    if (paintRef.current) {
+      setPainter(null);
+      return;
+    }
+    void saveAndClose();
+  }
+
   function onKey(e: KeyboardEvent): void {
     const mod = e.metaKey || e.ctrlKey;
     if (mod && !e.altKey && (e.key === 'e' || e.key === 'k')) {
@@ -454,13 +543,14 @@ function EditorBody(props: {
     link: () => void addLink(),
     formula: openFormula,
     image: () => insertImage(activeRef.current),
+    painter,
   };
 
   const t = activeTarget();
   const on: ActiveMap = t && t.kind === 'wysiwyg' ? activeState(t.ed) : {};
 
   return (
-    <Modal className="editor-dialog" onClose={() => void saveAndClose()} onKeyDown={onKey}>
+    <Modal className={'editor-dialog' + (paint ? ' painting' : '')} onClose={closeOrExitPainter} onKeyDown={onKey}>
       <div className="editor-head">
         <button
           className="btn sm"
@@ -492,7 +582,9 @@ function EditorBody(props: {
           ×
         </button>
       </div>
-      {st.type !== 'topic' && <Toolbar api={apiObj} on={on} />}
+      {st.type !== 'topic' && (
+        <Toolbar api={apiObj} on={on} painting={!!paint} paintDisabled={t ? t.kind === 'source' : false} />
+      )}
       <div className="editor-scroll">
         {st.help && <MdHelp />}
         {st.type === 'topic' ? (
@@ -542,6 +634,7 @@ function EditorBody(props: {
                 onSelection={bump}
                 onToggleSrc={() => toggleSrc(f)}
                 onImage={() => insertImage(f)}
+                onCardLink={(from) => setCardLink({ field: f, from })}
                 register={(ed) => {
                   editors.current[f] = ed;
                 }}
@@ -566,6 +659,7 @@ function EditorBody(props: {
         </button>
       </div>
       {formula && <FormulaDialog onDone={closeFormula} />}
+      {cardLink && <CardLinkPicker onPick={pickCardLink} onClose={closeCardLink} />}
     </Modal>
   );
 

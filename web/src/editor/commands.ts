@@ -35,6 +35,8 @@ export interface EditorApi {
   link(): void;
   formula(): void;
   image(): void;
+  /** 格式刷：sticky = 双击连续用，false = 用一次就退出。 */
+  painter(sticky: boolean): void;
 }
 
 /** Tiptap 把实例挂在 view.dom 上（core 里 `dom.editor = this`），粘贴、拖放的处理函数要插内容就靠它。 */

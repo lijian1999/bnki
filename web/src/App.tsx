@@ -9,9 +9,11 @@ import StudyModal from './study/StudyModal';
 import DeckDialogs from './dialogs/DeckDialogs';
 import Overlays from './ui/Overlays';
 import { useTheme } from './components/useTheme';
+import { useCardLinks } from './components/useCardLinks';
 
 export default function App() {
   useTheme();
+  useCardLinks();
   return (
     <>
       <Sidebar />

@@ -1,4 +1,4 @@
-// 工具栏：顺序和图标照原型（去掉格式刷）。所有按钮按下时不让编辑器失焦。
+// 工具栏：顺序和图标照原型。所有按钮按下时不让编辑器失焦。
 import { MARK_COLORS, TEXT_COLORS, FONT_SIZES } from '@bnki/shared';
 import { closeMenu, openMenu, type MenuItem } from '../ui/menu';
 import type { ActiveMap, EditorApi } from './commands';
@@ -16,12 +16,14 @@ function Tb(props: {
   title: string;
   cls?: string;
   on?: boolean;
+  disabled?: boolean;
   onClick: (e: MouseEvent<HTMLButtonElement>) => void;
 }): JSX.Element {
   return (
     <button
       className={'tb' + (props.cls ? ' ' + props.cls : '') + (props.on ? ' on' : '')}
       title={props.title}
+      disabled={props.disabled}
       onMouseDown={(e) => e.preventDefault()}
       onClick={props.onClick}
     >
@@ -122,7 +124,7 @@ function markerMenu(t: EditorApi): MenuItem[] {
   ];
 }
 
-export default function Toolbar(props: { api: EditorApi; on: ActiveMap }): JSX.Element {
+export default function Toolbar(props: { api: EditorApi; on: ActiveMap; painting: boolean; paintDisabled?: boolean }): JSX.Element {
   const t = props.api;
   const open = (items: MenuItem[]) => (e: MouseEvent<HTMLButtonElement>) => openMenu(e.currentTarget, items);
   return (
@@ -136,6 +138,13 @@ export default function Toolbar(props: { api: EditorApi; on: ActiveMap }): JSX.E
       <Tb label="[ 挖空 ]" title="挖空 ⌘E（也可以直接输入 {{答案}}）" cls="cloze-btn" on={props.on.cloze} onClick={() => t.cmd('cloze')} />
       <span className="tb-sep" />
       <Tb label={clearIcon} title="清除格式" onClick={() => t.cmd('clear')} />
+      <Tb
+        label="🖌"
+        title="格式刷（单击用一次，双击连续用）"
+        on={props.painting}
+        disabled={props.paintDisabled}
+        onClick={(e) => t.painter(e.detail === 2)}
+      />
       <Tb label="🔗" title="链接" onClick={t.link} />
       <Tb label="↶" title="撤销 ⌘Z" onClick={() => t.cmd('undo')} />
       <Tb label="↷" title="恢复 ⌘⇧Z" onClick={() => t.cmd('redo')} />

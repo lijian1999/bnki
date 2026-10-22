@@ -114,6 +114,7 @@ beforeEach(() => {
   calls = [];
   session = fullSession;
   mockFetch();
+  localStorage.setItem('bnki.studyIntroSeen', '1');
 });
 
 afterEach(() => {
@@ -126,6 +127,20 @@ afterEach(() => {
   });
   cleanup();
   vi.unstubAllGlobals();
+});
+
+describe('首次学习说明', () => {
+  it('第一次打开时弹出，Enter 关掉后不再弹，键盘先给说明框', async () => {
+    localStorage.removeItem('bnki.studyIntroSeen');
+    renderStudy();
+    await openStudy();
+    expect(text()).toContain('学习说明');
+    act(() => keyDown('3'));
+    expect(reviewCalls()).toHaveLength(0);
+    act(() => keyDown('Enter'));
+    await waitFor(() => expect(text()).not.toContain('学习说明'));
+    expect(localStorage.getItem('bnki.studyIntroSeen')).toBe('1');
+  });
 });
 
 describe('学习弹窗', () => {

@@ -1,4 +1,4 @@
-// 导入对话框：文本 / 表格（TSV、CSV）与 Markdown 文件两种入口，照原型 importDialog。
+// 导入对话框：文本 / 表格（TSV、CSV）与 Markdown 文件、Anki 牌组三种入口，照原型 importDialog。
 import { useRef, useState } from 'react';
 import type { JSX } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
@@ -7,6 +7,7 @@ import { api } from '../api';
 import { invalidateDeck } from '../queries';
 import { Modal, DialogHead } from '../ui/Modal';
 import { toast } from '../ui/toast';
+import { xlsxToRows, rowsToTsv } from '../import/xlsx';
 import '../styles/pages.css';
 
 export interface DeckDialogProps {
@@ -15,7 +16,7 @@ export interface DeckDialogProps {
 }
 
 const PLACEHOLDER = 'TCP 第二次握手发送什么？\tSYN+ACK\n进程是 {{资源分配}} 的基本单位';
-type Tab = 'text' | 'md';
+type Tab = 'text' | 'md' | 'apkg';
 type Split = 'item' | 'paragraph' | 'hr';
 
 function errText(e: unknown): string {
@@ -31,8 +32,11 @@ export default function ImportDialog(props: DeckDialogProps): JSX.Element {
   const [format, setFormat] = useState<'tsv' | 'csv'>('tsv');
   const [firstSec, setFirstSec] = useState(false);
   const [split, setSplit] = useState<Split>('item');
+  const [apkgFile, setApkgFile] = useState<File | null>(null);
+  const [importing, setImporting] = useState(false);
   const csvInput = useRef<HTMLInputElement>(null);
   const mdInput = useRef<HTMLInputElement>(null);
+  const apkgInput = useRef<HTMLInputElement>(null);
 
   const rows = parseImportText(text, format, firstSec);
   const preview = rows.slice(0, 5);
@@ -41,7 +45,27 @@ export default function ImportDialog(props: DeckDialogProps): JSX.Element {
     const f = el.files?.[0];
     if (!f) return;
     void f.text().then((t) => onText(t, f.name), () => toast('读取文件失败'));
-    el.value = ''; // 同一个文件可以再选一次
+    el.value = '';
+  };
+
+  const readXlsx = (el: HTMLInputElement): void => {
+    const f = el.files?.[0];
+    if (!f) return;
+    const name = f.name;
+    if (/\.xls$/i.test(name)) {
+      toast('只支持 .xlsx，请在 Excel 里另存为 .xlsx');
+    } else {
+      void f.arrayBuffer().then((buf) => {
+        try {
+          const rows = xlsxToRows(new Uint8Array(buf));
+          setText(rowsToTsv(rows));
+          setFormat('tsv');
+        } catch {
+          toast('读取 Excel 失败');
+        }
+      }, () => toast('读取 Excel 失败'));
+    }
+    el.value = '';
   };
 
   const finish = (r: { cards: number; sections: number }): void => {
@@ -65,9 +89,12 @@ export default function ImportDialog(props: DeckDialogProps): JSX.Element {
           <button className={tab === 'md' ? 'on' : ''} onClick={() => setTab('md')}>
             Markdown 文件
           </button>
+          <button className={tab === 'apkg' ? 'on' : ''} onClick={() => setTab('apkg')}>
+            Anki 牌组（.apkg）
+          </button>
         </div>
 
-        {tab === 'text' ? (
+        {tab === 'text' && (
           <>
             <div className="hint-text">
               每行一张卡片；用 Tab 分隔正面和背面（有背面 → 问答卡，没有 → 笔记卡）。可以直接从 Excel 复制粘贴。正文里的 <code>{'{{挖空}}'}</code> 和 Markdown
@@ -85,19 +112,24 @@ export default function ImportDialog(props: DeckDialogProps): JSX.Element {
             />
             <div className="file-row">
               <button className="btn sm" onClick={() => csvInput.current?.click()}>
-                上传 CSV 文件
+                上传 Excel / CSV 文件
               </button>
               <input
                 ref={csvInput}
                 type="file"
-                accept=".csv,.tsv,.txt"
+                accept=".xlsx,.csv,.tsv,.txt,.xls"
                 hidden
-                onChange={(e) =>
-                  readFile(e.currentTarget, (t, name) => {
-                    setText(t);
-                    setFormat(/\.csv$/i.test(name) ? 'csv' : 'tsv');
-                  })
-                }
+                onChange={(e) => {
+                  const f = e.currentTarget.files?.[0];
+                  if (f && /\.xlsx?$/i.test(f.name)) {
+                    readXlsx(e.currentTarget);
+                  } else {
+                    readFile(e.currentTarget, (t, name) => {
+                      setText(t);
+                      setFormat(/\.csv$/i.test(name) ? 'csv' : 'tsv');
+                    });
+                  }
+                }}
               />
             </div>
             <div className="form-row row-between">
@@ -115,7 +147,9 @@ export default function ImportDialog(props: DeckDialogProps): JSX.Element {
               </div>
             ))}
           </>
-        ) : (
+        )}
+
+        {tab === 'md' && (
           <>
             <div className="hint-text">一级到五级标题（#～#####）会变成目录，标题之间的内容按下面的规则切成卡片（都是笔记卡）。</div>
             <div className="file-row">
@@ -152,14 +186,58 @@ export default function ImportDialog(props: DeckDialogProps): JSX.Element {
             </div>
           </>
         )}
+
+        {tab === 'apkg' && (
+          <>
+            <div className="hint-text">
+              问答模板 → 问答卡，填空模板 → 笔记卡（{'{{c1::x}}'} 变成 {'{{x}}'}），子牌组 → 目录，图片一起导入。学习进度不导入。
+            </div>
+            <div className="file-row">
+              <button className="btn sm" onClick={() => apkgInput.current?.click()}>
+                选择 .apkg 文件
+              </button>
+              <input
+                ref={apkgInput}
+                type="file"
+                accept=".apkg"
+                hidden
+                onChange={(e) => {
+                  setApkgFile(e.currentTarget.files?.[0] ?? null);
+                  e.currentTarget.value = '';
+                }}
+              />
+              {apkgFile && (
+                <span className="apkg-file-info">
+                  {apkgFile.name}（{(apkgFile.size / 1024 >= 1024 ? apkgFile.size / (1024 * 1024) : apkgFile.size / 1024).toFixed(1)}{' '}
+                  {apkgFile.size / 1024 >= 1024 ? 'MB' : 'KB'}）
+                </span>
+              )}
+            </div>
+          </>
+        )}
       </div>
       <div className="dialog-foot">
-        {tab === 'text' && (
+        {tab !== 'apkg' && (
           <button className="btn" onClick={onClose}>
             取消
           </button>
         )}
-        {tab === 'text' ? (
+        {tab === 'apkg' ? (
+          <button
+            className="btn primary"
+            disabled={!apkgFile || importing}
+            onClick={() => {
+              if (!apkgFile) return;
+              setImporting(true);
+              void api.io
+                .importApkg(deckId, apkgFile)
+                .then(finish, (e) => toast(`导入失败：${errText(e)}`))
+                .finally(() => setImporting(false));
+            }}
+          >
+            {importing ? '导入中…' : '导入'}
+          </button>
+        ) : tab === 'text' ? (
           <button className="btn primary" disabled={!rows.length} onClick={() => run(api.io.importText({ deckId, text, format, firstColumnIsSection: firstSec }))}>
             导入到末尾
           </button>

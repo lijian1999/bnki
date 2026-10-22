@@ -3,7 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { DEFAULT_SETTINGS, type CardState, type DeckSummary, type Item } from '@bnki/shared';
+import { DEFAULT_SETTINGS, type CardItem, type CardState, type DeckSummary, type Item } from '@bnki/shared';
+import { plainText } from '@bnki/shared/markdown';
 import DeckPage from './DeckPage';
 import Overlays from '../ui/Overlays';
 
@@ -80,11 +81,11 @@ function mockFetch() {
   );
 }
 
-function renderDeck() {
+function renderDeck(path = '/deck/d1') {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
-      <MemoryRouter initialEntries={['/deck/d1']}>
+      <MemoryRouter initialEntries={[path]}>
         <Routes>
           <Route path="/deck/:deckId" element={<DeckPage />} />
         </Routes>
@@ -174,5 +175,48 @@ describe('卡片集页', () => {
     renderDeck();
     await waitTitle();
     expect(screen.getByText('开始搭建你的卡片集')).toBeTruthy();
+  });
+
+  it('?card= 定位：展开所在目录并选中卡片', async () => {
+    itemsArr = itemsArr.map((x) => (x.id === 'B' ? { ...x, collapsed: true } : x));
+    Element.prototype.scrollIntoView = vi.fn();
+    renderDeck('/deck/d1?card=c2');
+    await waitFor(() => {
+      const el = document.querySelector('.mini-card[data-item="c2"]');
+      expect(el?.classList.contains('sel')).toBe(true);
+    });
+    await waitFor(() => {
+      expect(
+        calls.some(
+          (c) => c.method === 'PATCH' && c.url === '/api/items/B' && (c.body as { collapsed?: boolean })?.collapsed === false,
+        ),
+      ).toBe(true);
+    });
+  });
+
+  it('朗读：点按钮开始朗读，再点停止', async () => {
+    Element.prototype.scrollIntoView = vi.fn();
+    const speak = vi.fn();
+    const cancel = vi.fn();
+    class Utterance {
+      text: string;
+      constructor(text: string) {
+        this.text = text;
+      }
+    }
+    vi.stubGlobal('speechSynthesis', { speak, cancel });
+    vi.stubGlobal('SpeechSynthesisUtterance', Utterance);
+    renderDeck();
+    await waitTitle();
+    const btn = Array.from(document.querySelectorAll('.icon-btn')).find((b) => b.getAttribute('title') === '朗读');
+    expect(btn).toBeTruthy();
+    fireEvent.click(btn!);
+    await waitFor(() => expect(speak).toHaveBeenCalled());
+    const first = itemsArr.find((x) => x.kind === 'card') as CardItem;
+    expect((speak.mock.calls[0]?.[0] as Utterance).text).toBe(plainText(first.front));
+    const stop = Array.from(document.querySelectorAll('.icon-btn')).find((b) => b.getAttribute('title') === '停止朗读');
+    expect(stop).toBeTruthy();
+    fireEvent.click(stop!);
+    await waitFor(() => expect(cancel).toHaveBeenCalled());
   });
 });

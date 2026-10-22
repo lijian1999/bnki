@@ -32,6 +32,18 @@ async function uploadInto(ed: Editor, file: File): Promise<void> {
   }
 }
 
+/** 光标前正好敲了第二个 [ 时返回插入点（[[ 后面），不该触发时返回 null。 */
+export function cardLinkAt(ed: Editor): number | null {
+  const { empty, $from } = ed.state.selection;
+  if (!empty || !$from.parent.isTextblock) return null;
+  // 代码块、行内公式里不算；行内代码看光标处的 mark
+  if (ed.isActive('codeBlock') || ed.isActive('code')) return null;
+  if ($from.nodeBefore?.type.name === 'mathInline' || $from.nodeAfter?.type.name === 'mathInline') return null;
+  const before = $from.parent.textBetween(Math.max(0, $from.parentOffset - 2), $from.parentOffset, undefined, '\ufffc');
+  // 中文输入法下 [ 打出来是【
+  return before === '[[' || before === '【【' ? $from.pos : null;
+}
+
 export interface RichFieldProps {
   field: FieldKey;
   label: string;
@@ -48,6 +60,8 @@ export interface RichFieldProps {
   onSelection(): void;
   onToggleSrc(): void;
   onImage(): void;
+  /** 输入了 [[，要开卡片链接选择框（参数是 [[ 之后的位置）。 */
+  onCardLink?(from: number): void;
   register(ed: Editor | null): void;
   /** 源码模式的文本域，工具栏要拿它的光标选区。 */
   registerText(el: HTMLTextAreaElement | null): void;
@@ -99,7 +113,13 @@ export function RichField(p: RichFieldProps): JSX.Element {
           return true;
         },
       },
-      onUpdate: () => cur.current.onDirty(),
+      onUpdate: ({ editor: ed, transaction: tr }) => {
+        cur.current.onDirty();
+        // 文档变长、光标前正好是 [[ 才弹：键盘、输入法、自动化输入都走这里；删字退回到 [[ 后面不弹
+        if (tr.getMeta('paste') || tr.doc.content.size <= tr.before.content.size) return;
+        const at = cardLinkAt(ed);
+        if (at !== null) cur.current.onCardLink?.(at);
+      },
       onFocus: () => {
         cur.current.onFocusField();
         cur.current.onSelection();

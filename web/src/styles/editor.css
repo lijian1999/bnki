@@ -20,3 +20,19 @@
 .wysiwyg .ProseMirror { outline: none; min-height: 68px; }
 .wysiwyg.small .ProseMirror { min-height: 22px; }
 .wysiwyg .ProseMirror > :first-child { margin-top: 0; }
+
+/* 格式刷进行中：字段里的指针换成复制的样子 */
+.painting .wysiwyg .ProseMirror { cursor: copy; }
+.tb[disabled] { opacity: .4; cursor: default; }
+
+/* 卡片链接选择框 */
+.dialog.card-link-dialog { width: 480px; }
+.card-link-dialog .cl-list { margin-top: 8px; max-height: 320px; overflow: auto; }
+.card-link-dialog .cl-hit {
+  display: flex; flex-direction: column; align-items: flex-start;
+  padding: 7px 8px; border-radius: 6px; cursor: pointer;
+}
+.card-link-dialog .cl-hit:hover { background: var(--panel-2); }
+.card-link-dialog .cl-hit.on { background: var(--accent-soft); }
+.card-link-dialog .cl-front { font-size: 13px; line-height: 1.45; }
+.card-link-dialog .cl-deck { font-size: 11px; color: var(--text-3); margin-top: 2px; }

@@ -1,13 +1,14 @@
 // 首页：卡片集列表（全部 / 最近使用 / 回收站 / 分类），结构照原型 homeHTML、deckCardHTML。
-import { useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { DEFAULT_SETTINGS, type DeckSort, type DeckSummary, type ID } from '@bnki/shared';
-import { api } from '../api';
+import { api, type SearchHit } from '../api';
 import { invalidateDeck, useDecks, useFolders, useSaveSettings, useSettings } from '../queries';
 import { openMenu, type MenuItem } from '../ui/menu';
 import { toast } from '../ui/toast';
 import { confirmDialog } from '../ui/dialogs';
+import '../styles/search.css';
 
 export type HomeView = 'all' | 'recent' | 'trash' | 'folder';
 
@@ -25,6 +26,35 @@ function errText(e: unknown): string {
   return typeof e === 'object' && e !== null && 'message' in e && typeof e.message === 'string' && e.message ? e.message : '操作失败';
 }
 
+const RE_CH = /[.*+?^${}()|[\]\\]/g;
+const SNIPPET = 30;
+
+/** 卡片内容片段：搜索词去掉空白后第一次出现处前后各 30 字，命中处包成 <mark class="hit">，被截掉的一头加省略号。 */
+function hitNodes(text: string, term: string): ReactNode[] {
+  const kw = term.replace(/\s+/g, '');
+  if (!kw) return [text];
+  const first = text.toLowerCase().indexOf(kw.toLowerCase());
+  // 搜不到就从头取，长度对齐「前后各 30」
+  const from = first < 0 ? 0 : Math.max(0, first - SNIPPET);
+  const to = first < 0 ? Math.min(text.length, SNIPPET * 2) : Math.min(text.length, first + kw.length + SNIPPET);
+  const nodes: ReactNode[] = [];
+  if (from > 0) nodes.push('…');
+  const re = new RegExp(kw.replace(RE_CH, '\\$&'), 'gi');
+  let cursor = from;
+  for (let i = 0, m = re.exec(text); m; m = re.exec(text)) {
+    const a = Math.max(m.index, from);
+    const b = Math.min(m.index + m[0].length, to);
+    if (a >= b) continue;
+    if (a > cursor) nodes.push(text.slice(cursor, a));
+    nodes.push(<mark className="hit" key={`h${i++}`}>{text.slice(a, b)}</mark>);
+    cursor = b;
+    if (cursor >= to) break;
+  }
+  if (cursor < to) nodes.push(text.slice(cursor, to));
+  if (to < text.length) nodes.push('…');
+  return nodes;
+}
+
 export default function HomePage(props: { view: HomeView }) {
   const view = props.view;
   const navigate = useNavigate();
@@ -33,7 +63,25 @@ export default function HomePage(props: { view: HomeView }) {
   const { data: settings } = useSettings();
   const { data: folders = [] } = useFolders();
   const [q, setQ] = useState('');
+  const [sq, setSq] = useState('');
   const saveSettings = useSaveSettings();
+
+  // 防抖：停 250ms 再拿关键词去搜卡片内容
+  useEffect(() => {
+    const t = setTimeout(() => setSq(q.trim()), 250);
+    return () => clearTimeout(t);
+  }, [q]);
+
+  const { data: hits, isPending } = useQuery({
+    queryKey: ['search', sq],
+    queryFn: () => api.search(sq, 30),
+    // 回收站视图不做内容搜索
+    enabled: view !== 'trash' && sq.length > 0,
+  });
+
+  const openHit = (h: SearchHit): void => {
+    navigate(`/deck/${h.deckId}?card=${h.id}`);
+  };
 
   const homeSort = settings?.homeSort ?? DEFAULT_SETTINGS.homeSort;
   const { data: decks = [] } = useDecks({
@@ -183,10 +231,35 @@ export default function HomePage(props: { view: HomeView }) {
         )}
         <div className="search">
           <span style={{ color: 'var(--text-3)' }}>⌕</span>
-          <input placeholder="搜索卡片集" value={q} onChange={(e) => setQ(e.target.value)} />
+          <input
+            placeholder="搜索卡片集"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && hits && hits.length > 0) openHit(hits[0]);
+            }}
+          />
         </div>
       </div>
       {grid}
+      {view !== 'trash' && !isPending && hits && sq.length > 0 && (
+        <div className="search-hits">
+          <div className="sh-head">
+            <h3>卡片内容</h3>
+            <span className="sh-count">{hits.length} 张</span>
+          </div>
+          {hits.length === 0 ? (
+            <div className="sh-none">没有找到包含“{sq}”的卡片</div>
+          ) : (
+            hits.map((h) => (
+              <div className="search-hit" key={h.id} role="button" onClick={() => openHit(h)}>
+                <div className="sh-deck">{h.deckTitle}</div>
+                <div className="sh-text">{hitNodes(h.text, sq)}</div>
+              </div>
+            ))
+          )}
+        </div>
+      )}
     </div>
   );
 }

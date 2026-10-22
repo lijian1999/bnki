@@ -1,7 +1,7 @@
 // 卡片集页：结构、类名、文案照原型 deckPageHTML 到卡片集页快捷键（prototype/app.js 第 401–917 行）。
 // 原型拼 HTML 字符串 + 内存数据，这里是 React 组件 + 接口数据；原型的 P1/P2 项没有搬。
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import type { CSSProperties, DragEvent as RDragEvent, JSX } from 'react';
 import {
@@ -18,7 +18,7 @@ import {
   type Item,
   type SectionItem,
 } from '@bnki/shared';
-import { renderMarkdown } from '@bnki/shared/markdown';
+import { plainText, renderMarkdown } from '@bnki/shared/markdown';
 import { api } from '../api';
 import { invalidateDeck, useDecks, useDeck, useItems, useSaveSettings, useSettings } from '../queries';
 import { openMenu } from '../ui/menu';
@@ -26,7 +26,8 @@ import { toast } from '../ui/toast';
 import { confirmDialog } from '../ui/dialogs';
 import { useUI } from '../store';
 import { fmtDate } from '../format';
-import { buildRows, computeDrop, insertAfterId, moveToSectionEnd, visibleIds } from '../deck/model';
+import { buildRows, computeDrop, insertAfterId, moveToSectionEnd, sectionPaths, visibleIds } from '../deck/model';
+import { hitIds, rectFrom, type Rect } from '../deck/marquee';
 import { deckMenu, type DeckActions } from '../deck/menus';
 import FloatToolbar from '../deck/FloatToolbar';
 import '../styles/deck.css';
@@ -121,7 +122,8 @@ export default function DeckPage() {
 
   const deckQ = useDeck(deckId);
   const deck = deckQ.data;
-  const items = useItems(deckId).data ?? [];
+  const itemsQ = useItems(deckId);
+  const items = itemsQ.data ?? [];
   const settings = useSettings().data ?? DEFAULT_SETTINGS;
   const allDecks = useDecks({}).data ?? [];
 
@@ -132,6 +134,9 @@ export default function DeckPage() {
   const [titleDraft, setTitleDraft] = useState<string | null>(null);
   const [drag, setDrag] = useState<{ id: ID; alt: boolean } | null>(null);
   const [dropInfo, setDropInfo] = useState<{ id: ID; after: boolean } | null>(null);
+  const [marquee, setMarquee] = useState<Rect | null>(null);
+  const [speakOn, setSpeakOn] = useState(false);
+  const [params, setParams] = useSearchParams();
 
   const anchorRef = useRef<ID | null>(null);
   const selRef = useRef<Set<string>>(sel);
@@ -149,6 +154,9 @@ export default function DeckPage() {
   const focusedTitleRef = useRef(false);
   const dragRef = useRef(drag);
   dragRef.current = drag;
+  const jumpedRef = useRef('');
+  const justMarqueeRef = useRef(false);
+  const speakQueueRef = useRef<CardItem[]>([]);
 
   const disp = dispOf(deck);
   const rows = useMemo(() => buildRows(items, q), [items, q]);
@@ -471,9 +479,15 @@ export default function DeckPage() {
     onClick: (_e: MouseEvent): void => {},
     onDblClick: (_e: MouseEvent): void => {},
     onKey: (_e: KeyboardEvent): void => {},
+    onMouseDown: (_e: MouseEvent): void => {},
   });
 
   handlersRef.current.onClick = (e: MouseEvent): void => {
+    // 刚框选完的那一次 click 不算点空白，否则选区马上被清掉
+    if (justMarqueeRef.current) {
+      justMarqueeRef.current = false;
+      return;
+    }
     const t = e.target as HTMLElement | null;
     if (!t || !deck) return;
     const itemEl = t.closest('[data-item]');
@@ -650,15 +664,157 @@ export default function DeckPage() {
     const onClick = (e: MouseEvent) => handlersRef.current.onClick(e);
     const onDbl = (e: MouseEvent) => handlersRef.current.onDblClick(e);
     const onKey = (e: KeyboardEvent) => handlersRef.current.onKey(e);
+    const onMouseDown = (e: MouseEvent) => handlersRef.current.onMouseDown(e);
     document.addEventListener('click', onClick);
     document.addEventListener('dblclick', onDbl);
     document.addEventListener('keydown', onKey);
+    document.addEventListener('mousedown', onMouseDown);
     return () => {
       document.removeEventListener('click', onClick);
       document.removeEventListener('dblclick', onDbl);
       document.removeEventListener('keydown', onKey);
+      document.removeEventListener('mousedown', onMouseDown);
     };
   }, []);
+
+  // 卡片定位：链接跳转带 ?card=<id>，展开所在目录链、选中、滚到中间并闪一下
+  useEffect(() => {
+    const cardParam = params.get('card');
+    if (!cardParam) {
+      jumpedRef.current = '';
+      return;
+    }
+    if (jumpedRef.current === cardParam || !deck || itemsQ.data === undefined) return;
+    jumpedRef.current = cardParam;
+    const target = items.find((x) => x.id === cardParam);
+    if (target?.kind === 'card') {
+      // 卡片可能被折叠的目录挡住，先把链上的目录都展开
+      for (const sid of sectionPaths(items)[cardParam] ?? []) {
+        const s = items.find((x) => x.id === sid);
+        if (s && s.kind === 'section' && s.collapsed) patchItem(sid, { collapsed: false });
+      }
+      anchorRef.current = cardParam;
+      setSel(new Set([cardParam]));
+      // 展开后要等重渲染，元素才出现在 DOM 里
+      let left = 25;
+      const step = (): void => {
+        const el = document.querySelector<HTMLElement>(`.mini-card[data-item="${cardParam}"]`);
+        if (el) {
+          el.scrollIntoView({ block: 'center' });
+          el.classList.add('flash');
+          window.setTimeout(() => el.classList.remove('flash'), 1600);
+          return;
+        }
+        if (left-- > 0) window.setTimeout(step, 0);
+      };
+      step();
+    }
+    setParams({}, { replace: true });
+  }, [params, items, deck, itemsQ.data, setParams, patchItem]);
+
+  // 框选用的卡片矩形（只有卡片，目录标题不参与）
+  const cardRects = (): { id: ID; rect: Rect }[] => {
+    const out: { id: ID; rect: Rect }[] = [];
+    document.querySelectorAll('.mini-card[data-item]').forEach((el) => {
+      const id = el.getAttribute('data-item');
+      if (!id) return;
+      const r = el.getBoundingClientRect();
+      out.push({ id, rect: { left: r.left, top: r.top, right: r.right, bottom: r.bottom } });
+    });
+    return out;
+  };
+
+  // 框选：主区空白处按下左键拖动，选中的是与框相交的卡片
+  handlersRef.current.onMouseDown = (e: MouseEvent): void => {
+    if (e.button !== 0) return;
+    const t = e.target as Element | null;
+    if (!t || typeof t.closest !== 'function') return;
+    if (!t.closest('#main') || t.closest('[data-item], button, input, textarea, select, a, [contenteditable], .toc, .float-toolbar, .fab-group')) return;
+    const x0 = e.clientX;
+    const y0 = e.clientY;
+    const mod = e.metaKey || e.ctrlKey || e.shiftKey;
+    const base = [...selRef.current];
+    let live = false;
+    justMarqueeRef.current = false;
+    const onMove = (ev: MouseEvent): void => {
+      if (!live) {
+        if (Math.hypot(ev.clientX - x0, ev.clientY - y0) <= 4) return;
+        live = true;
+        document.body.classList.add('marqueeing');
+      }
+      const box = rectFrom(x0, y0, ev.clientX, ev.clientY);
+      const hits = hitIds(box, cardRects());
+      setMarquee(box);
+      setSel(new Set(mod ? [...base, ...hits] : hits));
+    };
+    const onUp = (): void => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      document.body.classList.remove('marqueeing');
+      if (!live) return;
+      setMarquee(null);
+      justMarqueeRef.current = true;
+      // 紧接着的那一次 click 跳过；没发生 click 就自动失效，不会一直挡着
+      window.setTimeout(() => {
+        justMarqueeRef.current = false;
+      }, 0);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  };
+
+  // 朗读：整集或选中的卡片，一张一条语音
+  const speakText = (c: CardItem): string => (c.cardType === 'qa' ? `${plainText(c.front)}。${plainText(c.back)}` : plainText(c.front));
+
+  const stopSpeak = (): void => {
+    speakQueueRef.current = [];
+    if (window.speechSynthesis) window.speechSynthesis.cancel();
+    document.querySelectorAll('.mini-card.speaking').forEach((el) => el.classList.remove('speaking'));
+    setSpeakOn(false);
+  };
+
+  const speakFrom = (i: number): void => {
+    const list = speakQueueRef.current;
+    if (i >= list.length) {
+      stopSpeak();
+      return;
+    }
+    const c = list[i];
+    document.querySelectorAll('.mini-card.speaking').forEach((el) => el.classList.remove('speaking'));
+    const el = document.querySelector<HTMLElement>(`.mini-card[data-item="${c.id}"]`);
+    if (el) {
+      el.classList.add('speaking');
+      el.scrollIntoView({ block: 'nearest' });
+    }
+    const u = new SpeechSynthesisUtterance(speakText(c));
+    u.rate = settings.ttsRate;
+    if (settings.ttsLang) u.lang = settings.ttsLang;
+    u.onend = () => {
+      if (speakQueueRef.current === list) speakFrom(i + 1);
+    };
+    window.speechSynthesis.speak(u);
+  };
+
+  const toggleSpeak = (): void => {
+    if (!('speechSynthesis' in window) || typeof SpeechSynthesisUtterance === 'undefined') {
+      toast('浏览器不支持朗读');
+      return;
+    }
+    if (speakOn) {
+      stopSpeak();
+      return;
+    }
+    const cards = items.filter((x): x is CardItem => x.kind === 'card');
+    const chosen = cards.filter((c) => selRef.current.has(c.id));
+    const list = (chosen.length ? chosen : cards).filter((c) => speakText(c).trim());
+    if (!list.length) return;
+    speakQueueRef.current = list;
+    setSpeakOn(true);
+    speakFrom(0);
+  };
+
+  // 离开页面（或换一个卡片集）：停掉朗读
+  useEffect(() => stopSpeak, [deckId]);
 
   // ---------------------------------------------------------------- 渲染
 
@@ -779,6 +935,13 @@ export default function DeckPage() {
           ‹
         </button>
         <div style={{ flex: 1 }} />
+        <button
+          className={`icon-btn${speakOn ? ' on' : ''}`}
+          title={speakOn ? '停止朗读' : '朗读'}
+          onClick={toggleSpeak}
+        >
+          🔈
+        </button>
         {searchOpen || q ? (
           <div className="search" style={{ width: 240, margin: 0 }}>
             <span style={{ color: 'var(--text-3)' }}>⌕</span>
@@ -961,6 +1124,12 @@ export default function DeckPage() {
         </button>
       </div>
       <FloatToolbar items={items} selIds={[...sel]} actions={actions} />
+      {marquee && (
+        <div
+          className="marquee"
+          style={{ left: marquee.left, top: marquee.top, width: marquee.right - marquee.left, height: marquee.bottom - marquee.top }}
+        />
+      )}
     </>
   );
 }
