@@ -86,8 +86,21 @@ describe('其他', () => {
     const st = schedule(null, 3, now, base).state;
     expect(isNew(st)).toBe(false);
     expect(isDue(st, base, now)).toBe(false);
-    expect(isDue(st, base, st.due! - 1000)).toBe(true); // 当天学习日内到期就算
+    expect(isDue(st, base, st.due!)).toBe(true); // 到了它的学习日就算
+    expect(isDue(st, base, st.due! - 1000)).toBe(false); // 前一个学习日的最后一刻还不算
     expect(isDue({ ...st, mastered: true }, base, st.due!)).toBe(false);
+  });
+  it('按天排到“明天”的卡今天不到期，明天学习日开始就到期', () => {
+    for (const rating of [1, 2, 3] as const) {
+      const r = schedule(null, rating, now, base);
+      if (r.label.endsWith('明天')) {
+        expect(isDue(r.state, base, now)).toBe(false);
+        expect(isDue(r.state, base, today + DAY - 1)).toBe(false);
+        expect(isDue(r.state, base, today + DAY)).toBe(true);
+      }
+    }
+    // 新卡点“忘记”在按天模式下一定排到明天
+    expect(schedule(null, 1, now, base).label).toBe('本轮再练·明天');
   });
   it('previews 与 schedule 一致', () => {
     const p = previews(null, now, base);

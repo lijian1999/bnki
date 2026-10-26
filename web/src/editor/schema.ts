@@ -159,6 +159,21 @@ export function editorExtensions(): AnyExtension[] {
   ];
 }
 
+/** 只有换行、没有内容的段落算空行 */
+const isBlank = (n: PMNode) => n.childCount === 0 || n.content.content.every((c) => c.type.name === 'hardBreak');
+
+/** 第 index 个子节点前后是否都还有非空内容（只在两段内容之间的空行才保留） */
+function hasTextAround(parent: PMNode, index: number): boolean {
+  let before = false;
+  let after = false;
+  parent.forEach((c, _o, i) => {
+    if (c.type.name === 'paragraph' && isBlank(c)) return;
+    if (i < index) before = true;
+    if (i > index) after = true;
+  });
+  return before && after;
+}
+
 const attr = (k: string, v: unknown) => (v ? ` ${k}="${v}"` : '');
 
 // 行首在列表、引用里（前面是缩进或 "> "）时，prosemirror-markdown 不会转义行首的 - + > # 1.，这里补上
@@ -180,8 +195,14 @@ function text(s: MarkdownSerializerState, n: PMNode) {
 const serializer = new MarkdownSerializer(
   {
     doc: (s, n) => s.renderContent(n),
-    paragraph: (s, n) => {
-      s.renderInline(n);
+    // 空段落是用户特意留的空行，存成 <br> 才能原样回来；文档首尾的空段落丢掉
+    paragraph: (s, n, parent, index) => {
+      if (isBlank(n)) {
+        if (parent.type.name === 'doc' && !hasTextAround(parent, index)) return;
+        s.write('<br>');
+      } else {
+        s.renderInline(n);
+      }
       s.closeBlock(n);
     },
     heading: (s, n) => {
@@ -213,11 +234,12 @@ const serializer = new MarkdownSerializer(
       s.write('---');
       s.closeBlock(n);
     },
-    // breaks 开启：段内单个换行就是 <br>；末尾的换行丢掉
+    // breaks 开启：段内单个换行就是换行；段首的、连着的第二个起写成 <br>，否则会被吞掉或并成一个；末尾的换行丢掉
     hardBreak: (s, n, parent, index) => {
       for (let j = index + 1; j < parent.childCount; j++) {
         if (parent.child(j).type !== n.type) {
-          s.ensureNewLine();
+          if (index === 0 || parent.child(index - 1).type === n.type) s.write('<br>');
+          else s.ensureNewLine();
           return;
         }
       }

@@ -56,6 +56,29 @@ function esc(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+type Level = 1 | 2 | 3 | 4 | 5;
+
+/** 本机按卡片集记住最近一次新建的目录和它的级别（新建后改了级别也跟着改），下次新建沿用这个级别。 */
+const lastSectionKey = (deckId: ID): string => `bnki.lastSection.${deckId}`;
+
+function readLastSection(deckId: ID): { id: ID; level: Level } | null {
+  try {
+    const v = JSON.parse(localStorage.getItem(lastSectionKey(deckId)) ?? 'null') as { id?: unknown; level?: unknown } | null;
+    if (v && typeof v.id === 'string' && [1, 2, 3, 4, 5].includes(v.level as number)) return { id: v.id, level: v.level as Level };
+  } catch {
+    // 读不到就按一级目录
+  }
+  return null;
+}
+
+function writeLastSection(deckId: ID, id: ID, level: Level): void {
+  try {
+    localStorage.setItem(lastSectionKey(deckId), JSON.stringify({ id, level }));
+  } catch {
+    // 存不了只是下次不沿用
+  }
+}
+
 const MODE_NAMES: Record<string, string> = { daily: '按天模式', flexible: '灵活模式', sprint: '冲刺模式' };
 
 /** 卡片网格里的正文 HTML（照原型 cardHTML 的 inner）。 */
@@ -271,6 +294,7 @@ export default function DeckPage() {
   const clearSel = (): void => setSel(new Set());
 
   const patchItem = (id: ID, patch: Parameters<typeof api.items.update>[1]): void => {
+    if (patch.level != null && readLastSection(deckId)?.id === id) writeLastSection(deckId, id, patch.level);
     qc.setQueryData<Item[]>(['items', deckId], (old) => old?.map((x) => (x.id === id ? ({ ...x, ...patch } as Item) : x)));
     void settle(api.items.update(id, patch), qc, deckId);
   };
@@ -314,10 +338,11 @@ export default function DeckPage() {
     setRenaming(id);
   };
 
-  const createSectionCore = (aid: ID | null | undefined, level: 1 | 2 | 3 | 4 | 5): void => {
+  const createSectionCore = (aid: ID | null | undefined, level: Level): void => {
     void api.items
       .create({ deckId, kind: 'section', afterId: aid, level, title: '新目录' })
       .then((it) => {
+        writeLastSection(deckId, it.id, level);
         qc.setQueryData<Item[]>(['items', deckId], (old) => (old ? insertLocally(old, it, aid) : old));
         invalidateDeck(qc, deckId);
         setSel(new Set([it.id]));
@@ -327,15 +352,16 @@ export default function DeckPage() {
       .catch(errFail());
   };
 
-  /** 新建目录：位置用选中项解析，级别跟选中目录一致（否则 1）。 */
+  /** 新建目录：位置用选中项解析，级别跟选中目录一致，没选目录就沿用上次新建的级别（否则 1）。 */
   const createSection = (afterId?: ID | null): void => {
     const last = lastSel();
     const target = last ? items.find((x) => x.id === last) : undefined;
-    createSectionCore(afterId !== undefined ? afterId : insertAfterId(items, last), target && target.kind === 'section' ? target.level : 1);
+    const level = target && target.kind === 'section' ? target.level : (readLastSection(deckId)?.level ?? 1);
+    createSectionCore(afterId !== undefined ? afterId : insertAfterId(items, last), level);
   };
 
-  /** 目录面板的＋：末尾新建一级目录。 */
-  const createSectionAtEnd = (): void => createSectionCore(undefined, 1);
+  /** 目录面板的＋：末尾新建目录，级别沿用上次新建的。 */
+  const createSectionAtEnd = (): void => createSectionCore(undefined, readLastSection(deckId)?.level ?? 1);
 
   function errFail(): (e: unknown) => void {
     return () => toast('操作失败');

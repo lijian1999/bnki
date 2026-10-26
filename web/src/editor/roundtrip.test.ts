@@ -28,6 +28,11 @@ const SAMPLES = [
   '\\{{ 字面 \\==b \\$5',
   '---',
   '见 [进程](bnki://card/abc123) 一节',
+  '**标题：**内容，前文**“引号”**后文',
+  '段落一\n\n<br>\n\n<br>\n\n段落二',
+  '第一行\n<br>第三行',
+  '段落\n\n<br><br>开头空两行',
+  '- 列表\n\n<br>\n\n段落',
 ];
 
 describe('Markdown 往返', () => {
@@ -36,4 +41,35 @@ describe('Markdown 往返', () => {
       expect(roundtrip(src)).toBe(src);
     });
   }
+});
+
+describe('空行', () => {
+  const toMd = (html: string) => {
+    const ed = new Editor({ extensions: editorExtensions(), content: html });
+    const out = docToMarkdown(ed.state.doc);
+    ed.destroy();
+    return out;
+  };
+
+  it('段落之间的空段落保留成 <br>，首尾的丢掉', () => {
+    expect(toMd('<p>a</p><p></p><p>b</p>')).toBe('a\n\n<br>\n\nb');
+    expect(toMd('<p></p><p>a</p><p></p><p></p>')).toBe('a');
+  });
+
+  it('连按两次换行不会并成一次', () => {
+    expect(toMd('<p>a<br><br>b</p>')).toBe('a\n<br>b');
+    expect(toMd('<p>a<br>b<br></p>')).toBe('a\nb');
+    expect(toMd('<p>a</p><p><br><br>b</p>')).toBe('a\n\n<br><br>b');
+  });
+
+  it('保存的空行在编辑器里是空段落，不是段内换行', () => {
+    const ed = new Editor({ extensions: editorExtensions(), content: renderMarkdown('a\n\n<br>\n\nb', { editor: true }) });
+    expect(ed.getJSON().content?.map((n) => n.content?.length ?? 0)).toEqual([1, 0, 1]);
+    ed.destroy();
+  });
+
+  it('保存后的空行在显示时还是空行', () => {
+    expect(renderMarkdown('a\n\n<br>\n\nb')).toContain('<p><br></p>');
+    expect(renderMarkdown('a\n<br>b')).toContain('a<br>\n<br>b');
+  });
 });

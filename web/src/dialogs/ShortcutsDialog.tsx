@@ -49,6 +49,7 @@ export default function ShortcutsDialog(props: DeckDialogProps): JSX.Element {
             ['移动选择 / 扩展选择', '↑↓←→ ⇧+方向键'],
             ['全选 / 多选', '⌘A ⌘+点击'],
             ['搜索', '⌘F'],
+            ['收起 / 展开侧边栏', '⌘\\'],
             ['拖动排序；⌥+拖动只移动目录标题', '拖动'],
           ]}
         />

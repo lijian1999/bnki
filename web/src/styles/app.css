@@ -77,6 +77,15 @@ a { color: var(--accent); }
   display: flex; flex-direction: column; padding: 14px 12px; gap: 2px; overflow-y: auto;
 }
 .brand { display: flex; align-items: center; gap: 8px; font-weight: 600; padding: 4px 8px 12px; }
+.sidebar-toggle {
+  margin-left: auto; width: 24px; height: 24px; border: 0; border-radius: 6px; background: none; padding: 0;
+  color: var(--text-3); font-size: 15px; line-height: 1; display: grid; place-items: center;
+}
+.sidebar-toggle:hover { background: rgba(0,0,0,.05); color: var(--text); }
+:root[data-theme="dark"] .sidebar-toggle:hover { background: rgba(255,255,255,.06); }
+/* 收起后留一条窄栏放展开按钮，不压住页面内容 */
+.sidebar-rail { width: 40px; flex: none; background: var(--panel-2); border-right: 1px solid var(--line); padding-top: 16px; display: flex; justify-content: center; }
+.sidebar-rail .sidebar-toggle { margin-left: 0; }
 .brand-logo { width: 26px; height: 26px; border-radius: 8px; background: var(--primary); color: var(--primary-text); display: grid; place-items: center; font-size: 13px; font-weight: 700; }
 .btn-new-deck {
   margin: 0 0 12px; background: var(--primary); color: var(--primary-text); border: 0; border-radius: 10px;
@@ -212,9 +221,14 @@ a { color: var(--accent); }
 .section-h .caret { color: var(--text-3); width: 14px; font-size: 10px; transition: transform .15s; }
 .section-h.collapsed .caret { transform: rotate(-90deg); }
 .section-h .t { font-weight: 600; }
-.section-h.l1 .t { font-size: 18px; }
+.section-h.l1 .t { font-size: 20px; }
 .section-h.l2 .t { font-size: 16px; }
 .section-h.l3 .t, .section-h.l4 .t, .section-h.l5 .t { font-size: 14px; }
+/* 二级起每级往右缩进，和上一级区分开 */
+.section-h.l2 { padding-left: 30px; }
+.section-h.l3 { padding-left: 50px; }
+.section-h.l4 { padding-left: 70px; }
+.section-h.l5 { padding-left: 90px; }
 .section-h .count { color: var(--text-3); font-size: 12px; font-weight: 400; }
 .section-h input { font-weight: 600; font-size: 16px; border: 1px solid var(--accent); border-radius: 6px; padding: 2px 6px; outline: 0; background: var(--panel); }
 .drop-line { height: 3px; background: var(--accent); border-radius: 2px; }
@@ -224,9 +238,9 @@ a { color: var(--accent); }
 .card-grid.cols-2 { grid-template-columns: repeat(2, minmax(0,1fr)); }
 .mini-card {
   background: var(--c-default); border-radius: var(--radius); box-shadow: var(--shadow); padding: 14px 16px;
-  height: 168px; overflow: hidden; position: relative; cursor: default; border: 2px solid transparent; font-size: 13px;
+  height: 240px; overflow: hidden; position: relative; cursor: default; border: 2px solid transparent; font-size: 13px;
 }
-.cols-1 .mini-card, .cols-2 .mini-card { height: auto; max-height: 260px; }
+.cols-1 .mini-card, .cols-2 .mini-card { height: auto; max-height: 360px; }
 .mini-card::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 34px; background: linear-gradient(transparent, var(--fade, var(--c-default))); pointer-events: none; }
 .mini-card.sel { border-color: var(--accent); }
 .mini-card.dragging { opacity: .4; }
@@ -241,6 +255,8 @@ a { color: var(--accent); }
 .mini-card .md ul, .mini-card .md ol { margin: 2px 0; padding-left: 18px; }
 .mini-card .md pre { font-size: 11px; padding: 6px 8px; }
 .mini-card .md h1, .mini-card .md h2, .mini-card .md h3 { font-size: 14px; margin: 0 0 4px; }
+.mini-card .md h1 { font-size: 16px; }
+.mini-card .md h2 { font-size: 15px; }
 .mini-card .md img { max-height: 70px; }
 
 .col-default { --fade: var(--c-default); background: var(--c-default); }
@@ -352,6 +368,9 @@ textarea.text-input { height: auto; padding: 8px 10px; font-family: ui-monospace
 .md h3 { font-size: 1.1em; margin: 6px 0; }
 .md ul, .md ol { padding-left: 22px; margin: 4px 0 8px; }
 .md li { margin: 2px 0; }
+/* 嵌套的有序列表换编号样式，看得出层级 */
+.md ol ol { list-style-type: lower-alpha; }
+.md ol ol ol { list-style-type: lower-roman; }
 .md blockquote { margin: 6px 0; padding: 2px 12px; border-left: 3px solid var(--line-2); color: var(--text-2); }
 .md code { font-family: ui-monospace, Menlo, monospace; font-size: .88em; background: rgba(127,127,127,.12); padding: 1px 5px; border-radius: 4px; }
 .md pre { background: #f6f8fa; border-radius: 8px; padding: 10px 12px; overflow-x: auto; margin: 6px 0 10px; }

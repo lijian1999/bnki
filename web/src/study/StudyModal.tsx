@@ -635,7 +635,7 @@ function StateLine(props: { card: CardItem; cfg: SchedCfg; now: number }): JSX.E
     );
   }
   const cutoff = dueCutoff(props.cfg, props.now);
-  const overdue = !st.mastered && st.due != null && st.due <= cutoff;
+  const overdue = !st.mastered && st.due != null && st.due < cutoff;
   return (
     <div className="study-state">
       <span className={overdue ? 'due' : ''}>

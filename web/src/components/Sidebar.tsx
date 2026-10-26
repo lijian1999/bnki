@@ -12,7 +12,7 @@ function errText(e: unknown): string {
   return typeof e === 'object' && e !== null && 'message' in e && typeof e.message === 'string' && e.message ? e.message : '操作失败';
 }
 
-export default function Sidebar() {
+export default function Sidebar(props: { onHide: () => void }) {
   const navigate = useNavigate();
   const location = useLocation();
   const qc = useQueryClient();
@@ -117,6 +117,9 @@ export default function Sidebar() {
       <div className="brand">
         <div className="brand-logo">b</div>
         bnki <span className="tag-p">本地</span>
+        <button className="sidebar-toggle" title="收起侧边栏（⌘\）" onClick={props.onHide}>
+          «
+        </button>
       </div>
       <button className="btn-new-deck" onClick={() => void newDeck()}>
         ＋ 新建卡片集

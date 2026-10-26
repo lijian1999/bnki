@@ -104,6 +104,8 @@ const HTML_STYLE = `
   table { border-collapse: collapse; }
   th, td { border: 1px solid #d8dee4; padding: 4px 10px; }
   ul, ol { padding-left: 22px; }
+  ol ol { list-style-type: lower-alpha; }
+  ol ol ol { list-style-type: lower-roman; }
   .cloze { border-bottom: 2px solid #3b82f6; color: transparent; }
   .math-block { text-align: center; }
   @media print {

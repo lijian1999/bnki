@@ -10,13 +10,23 @@ import DeckDialogs from './dialogs/DeckDialogs';
 import Overlays from './ui/Overlays';
 import { useTheme } from './components/useTheme';
 import { useCardLinks } from './components/useCardLinks';
+import { useSidebar } from './components/useSidebar';
 
 export default function App() {
   useTheme();
   useCardLinks();
+  const side = useSidebar();
   return (
     <>
-      <Sidebar />
+      {side.hidden ? (
+        <div className="sidebar-rail">
+          <button className="sidebar-toggle" title="展开侧边栏（⌘\）" onClick={side.toggle}>
+            »
+          </button>
+        </div>
+      ) : (
+        <Sidebar onHide={side.toggle} />
+      )}
       <main className="main" id="main">
         <Routes>
           <Route path="/" element={<HomePage view="all" />} />

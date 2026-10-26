@@ -66,8 +66,9 @@ export function dueCutoff(cfg: SchedCfg, now: number): number {
   return effectiveMode(cfg, now) === 'flexible' ? now : dayStart(now, cfg.dayHour) + DAY;
 }
 
+/** 截止时刻本身属于下一个学习日：按天排到“明天”的卡，due 正好等于今天的截止时刻，不算今天到期。 */
 export function isDue(st: CardState | null | undefined, cfg: SchedCfg, now: number): boolean {
-  return !!st && !st.mastered && st.state > 0 && st.due != null && st.due <= dueCutoff(cfg, now);
+  return !!st && !st.mastered && st.state > 0 && st.due != null && st.due < dueCutoff(cfg, now);
 }
 
 function toFsrs(st: CardState | null | undefined, now: number): FCard {

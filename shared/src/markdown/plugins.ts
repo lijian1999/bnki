@@ -17,6 +17,7 @@ const ALLOWED_HTML: RegExp[] = [
 ];
 
 export function bnkiPlugin(md: MarkdownIt): void {
+  addCjkEmphasis(md);
   addCloze(md);
   addMark(md);
   addMath(md);
@@ -24,6 +25,35 @@ export function bnkiPlugin(md: MarkdownIt): void {
   addImage(md);
   addLink(md);
   addHtmlWhitelist(md);
+}
+
+const CJK = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}\u3000-\u303f\uff00-\uffef]/u;
+
+/**
+ * CommonMark 要求 ** 的外侧是空白或标点、内侧紧挨标点时才算开合，`**标题：**内容`、`前文**“引号”**后文`
+ * 在中文里都认不出来。* 和 ~ 的分隔符外侧是中日韩文字时，也当作可以开合（_ 仍按原规则，免得词中下划线变斜体）。
+ */
+function addCjkEmphasis(md: MarkdownIt): void {
+  const isWs = md.utils.isWhiteSpace;
+  md.inline.State = class extends md.inline.State {
+    scanDelims(start: number, canSplitWord: boolean) {
+      const res = super.scanDelims(start, canSplitWord);
+      if (!canSplitWord) return res;
+      const before = start > 0 ? this.src.codePointAt(start - 1 - (isLowSurrogate(this.src, start - 1) ? 1 : 0)) : undefined;
+      const end = start + res.length;
+      const after = end < this.posMax ? this.src.codePointAt(end) : undefined;
+      const lastWs = before === undefined || isWs(before);
+      const nextWs = after === undefined || isWs(after);
+      if (!res.can_open && !nextWs && before !== undefined && CJK.test(String.fromCodePoint(before))) res.can_open = true;
+      if (!res.can_close && !lastWs && after !== undefined && CJK.test(String.fromCodePoint(after))) res.can_close = true;
+      return res;
+    }
+  };
+}
+
+function isLowSurrogate(s: string, i: number): boolean {
+  const c = s.charCodeAt(i);
+  return c >= 0xdc00 && c <= 0xdfff;
 }
 
 /** `{{内容}}`：不跨行、不嵌套，空内容不算挖空 */
@@ -257,8 +287,10 @@ function addLink(md: MarkdownIt): void {
 
 /** 白名单外的标签转义成文字，脚本之类不会进 DOM */
 function addHtmlWhitelist(md: MarkdownIt): void {
-  md.renderer.rules.html_inline = (tokens, idx) => {
+  md.renderer.rules.html_inline = (tokens, idx, _options, env: { editor?: boolean } | undefined) => {
     const content = tokens[idx].content;
+    // 一段里只有 <br> 是保存下来的空行：给编辑器时输出空段落，否则编辑器里会是两行高的换行
+    if (tokens.length === 1 && /^<br\s*\/?>$/.test(content) && env?.editor) return '';
     return ALLOWED_HTML.some((re) => re.test(content)) ? content : md.utils.escapeHtml(content);
   };
 }

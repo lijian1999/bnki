@@ -4,20 +4,49 @@
     {
       "name": "bnki-dev",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev"],
+      "runtimeArgs": [
+        "run",
+        "dev"
+      ],
       "port": 18421
     },
     {
       "name": "bnki-server",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev", "-w", "server"],
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "-w",
+        "server"
+      ],
       "port": 18420
     },
     {
       "name": "bnki-prototype",
       "runtimeExecutable": "python3",
-      "runtimeArgs": ["-m", "http.server", "18429", "-d", "prototype"],
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "18429",
+        "-d",
+        "prototype"
+      ],
       "port": 18429
+    },
+    {
+      "name": "bnki-verify",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": [
+        "tsx",
+        "server/src/cli.ts",
+        "--port",
+        "18424",
+        "--data",
+        ".orch/verify/data",
+        "--web",
+        ".orch/verify/dist"
+      ],
+      "port": 18424
     }
   ]
 }

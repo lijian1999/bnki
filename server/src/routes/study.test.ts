@@ -158,6 +158,15 @@ describe('study 接口', () => {
     await app.close();
   });
 
+  it('新卡点了忘记、排到明天的，今天不进仅复习', async () => {
+    const { app } = await setup();
+    const res = await app.inject({ method: 'POST', url: '/api/study/review', payload: { cardId: 'c1', rating: 1 } });
+    expect((res.json() as { label: string }).label).toBe('本轮再练·明天');
+    expect(q(await session(app, { content: 'review' }))).toEqual([]);
+    expect(q(await session(app))).toEqual(['c2', 'c3', 'c4']);
+    await app.close();
+  });
+
   it('评"忘记了"要本轮再练', async () => {
     const { app } = await setup();
     const res = await app.inject({ method: 'POST', url: '/api/study/review', payload: { cardId: 'c1', rating: 1 } });

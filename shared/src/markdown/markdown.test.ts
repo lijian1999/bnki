@@ -140,6 +140,19 @@ describe('markdown 扩展渲染', () => {
     expect(renderMarkdown('~~删除~~')).toContain('<s>删除</s>');
   });
 
+  it('中文标点紧挨 ** 时加粗、斜体、删除线照样生效', () => {
+    expect(renderMarkdown('**标题：**内容')).toContain('<strong>标题：</strong>内容');
+    expect(renderMarkdown('前文**“引号”**后文')).toContain('前文<strong>“引号”</strong>后文');
+    expect(renderMarkdown('{{**有效**}}**。**这是')).toContain('<strong>。</strong>这是');
+    expect(renderMarkdown('中文*（括号）*中文')).toContain('<em>（括号）</em>');
+    expect(renderMarkdown('中文~~（删）~~中文')).toContain('<s>（删）</s>');
+    expect(renderMarkdown('😀**“表情”**后文')).toContain('<strong>“表情”</strong>');
+    // 原有规则不受影响：外侧是空白不能开合，下划线仍不在词中生效
+    expect(renderMarkdown('中文** 加粗**')).not.toContain('<strong>');
+    expect(renderMarkdown('**中文**abc')).toContain('<strong>中文</strong>abc');
+    expect(renderMarkdown('中_（文）_中')).not.toContain('<em>');
+  });
+
   it('单个换行变成 br', () => {
     expect(renderMarkdown('a\nb')).toContain('<br>');
   });

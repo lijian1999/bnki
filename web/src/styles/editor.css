@@ -1,7 +1,7 @@
 /* 编辑器自己的样式：app.css 里的类名沿用原型，这里只补编辑器才有的东西。 */
 
-/* 占位文字：Placeholder 只会给空的文本块加 is-empty 和 data-placeholder */
-.wysiwyg .is-empty::before {
+/* 占位文字：Placeholder 给每个空段落都加 is-empty，只在整个字段为空（is-editor-empty）时显示，中间留的空行不显示 */
+.wysiwyg .is-editor-empty::before {
   content: attr(data-placeholder);
   float: left;
   height: 0;

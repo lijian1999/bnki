@@ -68,6 +68,12 @@ function mockFetch() {
         const it = itemsArr.find((x) => x.id === id);
         return json(it ?? { id });
       }
+      if (path === '/api/items' && method === 'POST') {
+        const b = body as { level: 1 | 2 | 3 | 4 | 5; title: string };
+        const it: Item = { id: `S${itemsArr.length}`, deckId: 'd1', kind: 'section', position: itemsArr.length + 1, level: b.level, title: b.title, collapsed: false, createdAt: 1, updatedAt: 1 };
+        itemsArr = [...itemsArr, it];
+        return json(it);
+      }
       if (path === '/api/items/delete') {
         const ids = (body as { ids: string[] }).ids;
         itemsArr = itemsArr.filter((x) => !ids.includes(x.id));
@@ -140,6 +146,36 @@ describe('卡片集页', () => {
     });
     await waitFor(() => expect(container.textContent).not.toContain('这个挖空很关键'));
     expect(container.textContent).toContain('答案2');
+  });
+
+  it('新建目录沿用上次新建的级别，新建后改过级别的按改后的算', async () => {
+    localStorage.removeItem('bnki.lastSection.d1');
+    // 浮动工具栏挂在 #main 上
+    const main = document.createElement('main');
+    main.id = 'main';
+    document.body.appendChild(main);
+    const { container } = renderDeck();
+    await waitTitle();
+    const posts = () => calls.filter((c) => c.method === 'POST' && c.url === '/api/items').map((c) => (c.body as { level: number }).level);
+    fireEvent.click(screen.getByText('☰ 新建目录'));
+    await waitFor(() => expect(posts()).toEqual([1]));
+    // 新目录是选中状态，从浮动工具栏改成二级
+    fireEvent.click(await screen.findByTitle('目录级别'));
+    fireEvent.click(await screen.findByText('二级目录'));
+    await waitFor(() => expect(calls.some((c) => c.method === 'PATCH' && (c.body as { level?: number })?.level === 2)).toBe(true));
+    expect(JSON.parse(localStorage.getItem('bnki.lastSection.d1')!)).toEqual({ id: 'S4', level: 2 });
+    // 取消选中后再新建：沿用二级
+    act(() => {
+      fireEvent.keyDown(document.body, { key: 'Escape' });
+    });
+    act(() => {
+      fireEvent.keyDown(document.body, { key: 'Escape' });
+    });
+    await waitFor(() => expect(container.querySelector('.section-h.sel')).toBeNull());
+    fireEvent.click(screen.getByText('☰ 新建目录'));
+    await waitFor(() => expect(posts()).toEqual([1, 2]));
+    localStorage.removeItem('bnki.lastSection.d1');
+    main.remove();
   });
 
   it('选中卡片按 Backspace：删除并出现撤销', async () => {
