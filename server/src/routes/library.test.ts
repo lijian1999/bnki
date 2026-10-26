@@ -382,6 +382,20 @@ describe('目录和卡片接口', () => {
     expect((await post(h, '/api/items', { deckId: d.id, kind: 'card', cardType: 'x' })).status).toBe(400);
   });
 
+  it('同一张卡 10 分钟内的连续修改只记一条 update 日志', async () => {
+    const h = await harness();
+    const d = await newDeck(h);
+    const c = await addCard(h, d.id);
+    for (let i = 1; i <= 5; i++) {
+      h.setNow(T + i * MIN);
+      await patch(h, `/api/items/${c}`, { front: `第 ${i} 版` });
+    }
+    expect(editLogCount(h, c, 'update')).toBe(1);
+    h.setNow(T + 16 * MIN);
+    await patch(h, `/api/items/${c}`, { front: '隔了 11 分钟' });
+    expect(editLogCount(h, c, 'update')).toBe(2);
+  });
+
   it('PATCH 改 front 写 update 日志；只改 collapsed 不刷新 updatedAt', async () => {
     const h = await harness();
     const d = await newDeck(h);

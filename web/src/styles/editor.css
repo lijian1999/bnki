@@ -36,3 +36,7 @@
 .card-link-dialog .cl-hit.on { background: var(--accent-soft); }
 .card-link-dialog .cl-front { font-size: 13px; line-height: 1.45; }
 .card-link-dialog .cl-deck { font-size: 11px; color: var(--text-3); margin-top: 2px; }
+
+/* 编辑器底部的自动保存状态 */
+.editor-foot .save-state { font-size: 12px; color: var(--text-3); }
+.editor-foot .save-state.err { color: var(--red); }

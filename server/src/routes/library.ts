@@ -83,6 +83,15 @@ function logEdit(ctx: Ctx, cardId: string, action: string): void {
   ctx.db.prepare('INSERT INTO edit_logs (card_id, action, at) VALUES (?,?,?)').run(cardId, action, ctx.now());
 }
 
+/** 编辑器边打字边自动保存：同一张卡上一条 update 日志在这段时间内的，不再记新的 */
+const EDIT_MERGE_MS = 10 * 60_000;
+
+function recentlyUpdated(ctx: Ctx, cardId: string): boolean {
+  const last = ctx.db.prepare('SELECT action, at FROM edit_logs WHERE card_id = ? ORDER BY at DESC, id DESC LIMIT 1').get(cardId) as
+    { action: string; at: number } | undefined;
+  return !!last && last.action === 'update' && ctx.now() - last.at < EDIT_MERGE_MS;
+}
+
 function touchDeck(ctx: Ctx, deckId: string): void {
   ctx.db.prepare('UPDATE decks SET updated_at = ? WHERE id = ?').run(ctx.now(), deckId);
 }
@@ -579,7 +588,7 @@ export default async function register(app: FastifyInstance, ctx: Ctx): Promise<
     const keys = ['title', 'level', 'collapsed', 'cardType', 'front', 'hint', 'back', 'color'];
     const dirty = keys.some((k) => has(b, k));
     const onlyCollapsed = has(b, 'collapsed') && !keys.filter((k) => k !== 'collapsed').some((k) => has(b, k));
-    if (content) logEdit(ctx, row.id, 'update');
+    if (content && !recentlyUpdated(ctx, row.id)) logEdit(ctx, row.id, 'update');
     if (dirty && !onlyCollapsed) {
       set.updated_at = ctx.now();
       touchDeck(ctx, row.deck_id);

@@ -72,7 +72,7 @@
 | `GET /api/decks/:id/items` | | `Item[]`，未删除，按 `position` 升序；卡片带 `state` |
 | `GET /api/items/:id` | | `Item`（带 `state`）。条目或所在卡片集已删除时 404。卡片链接 `bnki://card/<id>` 用它找所在卡片集 |
 | `POST /api/items` | `{ deckId, kind, afterId?, level?, title?, cardType?, front?, hint?, back?, color? }` | `Item`。位置：`afterId` 省略 = 末尾；`afterId: null` = 最前面；否则紧跟在 `afterId` 之后。默认值：目录 `level 1`、`title '新目录'`；卡片 `cardType 'note'`、`front/hint/back ''`、`color 'default'`。新建卡片写 `edit_logs`（`create`）。刷新卡片集 `updatedAt` |
-| `PATCH /api/items/:id` | `{ title?, level?, collapsed?, cardType?, front?, hint?, back?, color? }` | `Item`。卡片内容（`cardType/front/hint/back`）有变化时写 `edit_logs`（`update`）。除了只改 `collapsed`，都刷新卡片集 `updatedAt` 和本项 `updatedAt` |
+| `PATCH /api/items/:id` | `{ title?, level?, collapsed?, cardType?, front?, hint?, back?, color? }` | `Item`。卡片内容（`cardType/front/hint/back`）有变化时写 `edit_logs`（`update`）；编辑器边打字边自动保存，同一张卡最近一条日志是 10 分钟内的 `update` 就不再写新的。除了只改 `collapsed`，都刷新卡片集 `updatedAt` 和本项 `updatedAt` |
 | `POST /api/items/delete` | `{ ids: ID[] }` | `{ ok: true }`，软删除（`deleted_at = now`）；卡片写 `edit_logs`（`delete`）。删目录只删标题，下面的卡片保留 |
 | `POST /api/items/restore` | `{ ids: ID[] }` | `{ ok: true }`，撤销删除（`deleted_at = null`，位置不变） |
 | `POST /api/items/move` | `{ ids: ID[], afterId: ID \| null, deckId?: ID }` | `{ ok: true }`。把 `ids`（按给定顺序）移到目标卡片集（默认原卡片集）里 `afterId` 之后，`afterId: null` = 最前面，`afterId` 不在目标卡片集里时放末尾。只改 `position`（和 `deck_id`），card_states 跟着卡片走 |

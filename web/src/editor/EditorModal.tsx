@@ -52,6 +52,21 @@ interface EdState {
 
 const ALL_FIELDS: FieldKey[] = ['front', 'hint', 'back'];
 
+/** 停止输入多久后自动保存；保存失败后多久重试。 */
+const AUTOSAVE_MS = 800;
+const RETRY_MS = 3000;
+
+type SaveState = 'idle' | 'saving' | 'saved' | 'error';
+const SAVE_TEXT: Record<SaveState, string> = { idle: '', saving: '保存中…', saved: '已保存', error: '保存失败，正在重试' };
+
+interface CardBody {
+  cardType: CardType;
+  color: CardColor;
+  front: string;
+  hint: string;
+  back: string;
+}
+
 function init(target: EditorTarget, card: CardItem | null, s: Settings): EdState {
   return {
     type: card ? card.cardType : s.lastCardType,
@@ -109,8 +124,25 @@ function EditorBody(props: {
   const editors = useRef<Partial<Record<FieldKey, Editor | null>>>({});
   const inputs = useRef<Partial<Record<FieldKey, HTMLTextAreaElement | HTMLInputElement | null>>>({});
   const activeRef = useRef<FieldKey | null>(null);
-  const dirty = useRef(false);
   const closing = useRef(false);
+  const [saveState, setSaveStateRaw] = useState<SaveState>('idle');
+  const saveStateRef = useRef<SaveState>('idle');
+  // 这张卡在服务器上的 id：编辑已有卡片一开始就有；新建的第一次自动保存后才有
+  const savedId = useRef<ID | null>(target.cardId ?? null);
+  // 新建的卡已经自动建出来了：关闭时内容又删空了，就把它删掉
+  const autoCreated = useRef(false);
+  // 最近一次存下的内容，没变就不发请求（编辑已有卡片时从卡片原样算起）
+  const lastSaved = useRef(
+    card
+      ? JSON.stringify({ cardType: card.cardType, color: card.color, front: card.front, hint: card.hint ?? '', back: card.back ?? '' })
+      : '',
+  );
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // 保存一个接一个排队，新建的请求没回来之前不会再建一张
+  const queue = useRef<Promise<boolean>>(Promise.resolve(true));
+  // 计时器到点时要读最新一次渲染的状态（类型、颜色、源码模式的文本）
+  const snapshotRef = useRef<() => { body: CardBody; empty: boolean; afterId?: ID | null }>(() => snapshot());
+  snapshotRef.current = snapshot;
   const formulaFrom = useRef<{ ed: Editor; from: number; to: number } | null>(null);
   // Esc 由 Modal 转成 onClose，但它分不清输入法组字中的 Esc；先在捕获阶段记一下
   const escComposing = useRef(false);
@@ -281,62 +313,114 @@ function EditorBody(props: {
     setTimeout(() => el.setSelectionRange(r.from, r.to), 0);
   }
 
-  function afterSave(): void {
-    invalidateDeck(qc, target.deckId);
-    if (settings.lastCardType !== st.type || settings.lastCardColor !== st.color) {
-      void saveSettings({ lastCardType: st.type, lastCardColor: st.color }).catch(() => undefined);
-    }
+  function setSaveState(v: SaveState): void {
+    saveStateRef.current = v;
+    setSaveStateRaw(v);
   }
 
-  /** 存一次；空内容不存，出错提示后不关窗。 */
-  async function save(): Promise<{ id?: ID; empty: boolean; failed: boolean }> {
+  /** 当前要存的内容。没显示的字段不存（笔记卡没有答案，只有问答卡有提示）。 */
+  function snapshot(): { body: CardBody; empty: boolean; afterId?: ID | null } {
     const cur = collect();
-    if (!cur.front.trim() && !cur.back.trim()) return { empty: true, failed: false };
-    const body = {
+    const body: CardBody = {
       cardType: st.type,
       color: st.color,
       front: cur.front,
       hint: st.type === 'qa' ? cur.hint : '',
       back: st.type === 'note' ? '' : cur.back,
     };
-    try {
-      if (target.cardId) {
-        const same =
-          !!card &&
-          card.cardType === body.cardType &&
-          card.color === body.color &&
-          card.front === body.front &&
-          (card.hint ?? '') === body.hint &&
-          (card.back ?? '') === body.back;
-        if (!same) await api.items.update(target.cardId, body);
-        afterSave();
-        return { id: target.cardId, empty: false, failed: false };
-      }
-      const item = await api.items.create({
-        deckId: target.deckId,
-        kind: 'card',
-        ...(st.afterId !== undefined ? { afterId: st.afterId } : {}),
-        ...body,
-      });
-      afterSave();
-      return { id: item.id, empty: false, failed: false };
-    } catch {
-      toast('保存失败');
-      return { empty: false, failed: true };
+    return { body, empty: !body.front.trim() && !body.back.trim(), afterId: st.afterId };
+  }
+
+  function afterSave(body: CardBody): void {
+    invalidateDeck(qc, target.deckId);
+    if (settings.lastCardType !== body.cardType || settings.lastCardColor !== body.color) {
+      void saveSettings({ lastCardType: body.cardType, lastCardColor: body.color }).catch(() => undefined);
     }
   }
 
-  /** Esc、点遮罩：保存并关闭。 */
+  /** 内容有改动：停一会儿再存。 */
+  function scheduleSave(ms = AUTOSAVE_MS): void {
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => {
+      timer.current = null;
+      void flush();
+    }, ms);
+  }
+
+  /** 立刻存（排在前一次保存之后），返回是否存成功。空内容不存，算成功。 */
+  function flush(): Promise<boolean> {
+    if (timer.current) {
+      clearTimeout(timer.current);
+      timer.current = null;
+    }
+    queue.current = queue.current.then(persist);
+    return queue.current;
+  }
+
+  async function persist(): Promise<boolean> {
+    const snap = snapshotRef.current();
+    const key = JSON.stringify(snap.body);
+    if (snap.empty || key === lastSaved.current) return true;
+    setSaveState('saving');
+    try {
+      if (savedId.current) {
+        await api.items.update(savedId.current, snap.body);
+      } else {
+        const item = await api.items.create({
+          deckId: target.deckId,
+          kind: 'card',
+          ...(snap.afterId !== undefined ? { afterId: snap.afterId } : {}),
+          ...snap.body,
+        });
+        savedId.current = item.id;
+        autoCreated.current = true;
+      }
+      lastSaved.current = key;
+      setSaveState('saved');
+      afterSave(snap.body);
+      return true;
+    } catch {
+      setSaveState('error');
+      scheduleSave(RETRY_MS);
+      return false;
+    }
+  }
+
+  /** 这次自动建出来的卡关闭时内容是空的：删掉，不留空卡。 */
+  async function dropIfEmpty(): Promise<void> {
+    const id = savedId.current;
+    if (!id || !autoCreated.current || !snapshotRef.current().empty) return;
+    await api.items.remove([id]).catch(() => undefined);
+    invalidateDeck(qc, target.deckId);
+  }
+
+  // 关闭或刷新页面时还有没存上的：先发出去，再让浏览器问一句
+  useEffect(() => {
+    const onLeave = (e: BeforeUnloadEvent): void => {
+      if (!timer.current && saveStateRef.current !== 'saving' && saveStateRef.current !== 'error') return;
+      void flush();
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', onLeave);
+    return () => {
+      window.removeEventListener('beforeunload', onLeave);
+      if (timer.current) clearTimeout(timer.current);
+    };
+  }, []);
+
+  /** Esc、点遮罩、×：存完再关；存不上就提示并留在编辑器里。 */
   async function saveAndClose(): Promise<void> {
     const comp = escComposing.current;
     escComposing.current = false;
     if (comp || closing.current) return;
     closing.current = true;
-    const r = await save();
-    if (r.failed) {
+    if (!(await flush())) {
+      toast('保存失败');
       closing.current = false;
       return;
     }
+    await dropIfEmpty();
     closeEditor();
   }
 
@@ -345,28 +429,22 @@ function EditorBody(props: {
       await saveAndClose();
       return;
     }
-    const cur = collect();
-    if (!cur.front.trim() && !cur.back.trim()) {
+    if (snapshotRef.current().empty) {
       toast('卡片是空的');
       return;
     }
-    const r = await save();
-    if (r.failed) return;
-    dirty.current = false;
-    props.setEd((s) => ({ ...s, afterId: r.id, md: { front: '', hint: '', back: '' }, resetSeq: s.resetSeq + 1 }));
-    toast('已保存，继续新建下一张');
-    focusFirst();
-  }
-
-  /** × ：有未保存的修改先问一句。 */
-  function closeWithoutSaving(): void {
-    if (!dirty.current) {
-      closeEditor();
+    if (!(await flush())) {
+      toast('保存失败');
       return;
     }
-    void confirmDialog('放弃修改？', '关闭后，本次修改不会保存。', '放弃修改', true).then((ok) => {
-      if (ok) closeEditor();
-    });
+    const id = savedId.current;
+    savedId.current = null;
+    autoCreated.current = false;
+    lastSaved.current = '';
+    setSaveState('idle');
+    props.setEd((s) => ({ ...s, afterId: id, md: { front: '', hint: '', back: '' }, resetSeq: s.resetSeq + 1 }));
+    toast('已保存，继续新建下一张');
+    focusFirst();
   }
 
   function toggleSrc(f: FieldKey): void {
@@ -386,6 +464,7 @@ function EditorBody(props: {
     props.setEd((s) => ({ ...s, type: k, md: { ...s.md, ...cur }, showHint: s.showHint || !!cur.hint }));
     activeRef.current = null;
     setActive(null);
+    scheduleSave();
   }
 
   async function switchToTopic(): Promise<void> {
@@ -399,6 +478,7 @@ function EditorBody(props: {
     }));
     activeRef.current = null;
     setActive(null);
+    scheduleSave();
   }
 
   function addHint(): void {
@@ -585,7 +665,7 @@ function EditorBody(props: {
         <button
           className="btn sm"
           title="卡片颜色"
-          onClick={(e) => openMenu(e.currentTarget, [{ render: () => <Swatches current={st.color} onPick={(c) => props.setEd((s) => ({ ...s, color: c }))} /> }])}
+          onClick={(e) => openMenu(e.currentTarget, [{ render: () => <Swatches current={st.color} onPick={(c) => { props.setEd((s) => ({ ...s, color: c })); scheduleSave(); }} /> }])}
         >
           <span className="swatch" style={{ background: colorHex(st.color) }} /> 颜色
         </button>
@@ -597,7 +677,7 @@ function EditorBody(props: {
         <button className="btn sm ghost" onClick={() => props.setEd((s) => ({ ...s, help: !s.help }))}>
           Markdown 语法
         </button>
-        <button className="icon-btn" title="关闭（不保存）" onClick={closeWithoutSaving}>
+        <button className="icon-btn" title="关闭" onClick={() => void saveAndClose()}>
           ×
         </button>
       </div>
@@ -612,8 +692,8 @@ function EditorBody(props: {
             back={st.md.back}
             active={active}
             onInput={(f, v) => {
-              dirty.current = true;
               props.setEd((s) => ({ ...s, md: { ...s.md, [f]: v } }));
+              scheduleSave();
             }}
             onFocusField={focusField}
             register={(f, el) => {
@@ -641,7 +721,7 @@ function EditorBody(props: {
                 small={f === 'hint'}
                 onInput={fieldInput(f)}
                 onDirty={() => {
-                  dirty.current = true;
+                  scheduleSave();
                   bump();
                 }}
                 onFocusField={() => {
@@ -673,6 +753,7 @@ function EditorBody(props: {
       <div className="editor-foot">
         <span className="tip">⌘E 挖空 · ⌥↩ 切换正反面 · ⌘↩ 完成 · Esc 保存并关闭</span>
         <div style={{ flex: 1 }} />
+        <span className={'save-state' + (saveState === 'error' ? ' err' : '')}>{SAVE_TEXT[saveState]}</span>
         <button className="btn primary" onClick={() => void done()}>
           完成 ⌘↩
         </button>
@@ -684,8 +765,8 @@ function EditorBody(props: {
 
   function fieldInput(f: FieldKey): (v: string) => void {
     return (v) => {
-      dirty.current = true;
       props.setEd((s) => ({ ...s, md: { ...s.md, [f]: v } }));
+      scheduleSave();
     };
   }
 }
