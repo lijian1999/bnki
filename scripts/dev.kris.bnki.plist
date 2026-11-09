@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- 登录时自动启动后端（只起服务，不开浏览器）。安装方法见 README「开机自动启动」。 -->
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>dev.kris.bnki</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/opt/homebrew/bin/node</string>
+		<string>/Users/kris/projects/bnki/node_modules/tsx/dist/cli.mjs</string>
+		<string>src/cli.ts</string>
+		<string>--port</string>
+		<string>18420</string>
+		<string>--data</string>
+		<string>../data</string>
+		<string>--web</string>
+		<string>../web/dist</string>
+	</array>
+	<key>WorkingDirectory</key>
+	<string>/Users/kris/projects/bnki/server</string>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>PATH</key>
+		<string>/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+	</dict>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>KeepAlive</key>
+	<true/>
+	<key>ProcessType</key>
+	<string>Background</string>
+	<key>StandardOutPath</key>
+	<string>/Users/kris/Library/Logs/bnki/server.log</string>
+	<key>StandardErrorPath</key>
+	<string>/Users/kris/Library/Logs/bnki/server.err.log</string>
+</dict>
+</plist>
