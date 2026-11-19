@@ -12,7 +12,7 @@
   <img src="https://img.shields.io/badge/Fastify-5-000000?style=flat-square" alt="Fastify 5">
   <img src="https://img.shields.io/badge/SQLite-better--sqlite3-003B57?style=flat-square&logo=sqlite&logoColor=white" alt="SQLite">
   <img src="https://img.shields.io/badge/FSRS-scheduler-FF6B6B?style=flat-square" alt="FSRS">
-  <img src="https://img.shields.io/badge/tests-317%20passed-3FB950?style=flat-square" alt="317 tests passed">
+  <img src="https://img.shields.io/badge/tests-349%20passed-3FB950?style=flat-square" alt="349 tests passed">
 </p>
 
 <p align="center">
@@ -57,7 +57,7 @@ bnki 是一个给自己用的本地卡片复习工具。界面与操作习惯参
 
 - 单文件 SQLite（WAL 模式）+ `media/` 图片目录；启动时每天自动备份，保留最近 14 份。
 - 整库备份 / 恢复：`VACUUM INTO` 快照 + media 目录打包，恢复前自动再备份一份。
-- 导入：文本 / TSV / CSV / Excel、Markdown 文件、Anki `.apkg`（Basic、Cloze、子牌组、图片）。
+- 导入：文本 / TSV / CSV / Excel、Markdown 文件、Anki `.apkg`（Basic、Cloze、子牌组、图片）、**ChatGPT 学习模式对话**（见下一节）。
 - 导出：Markdown、HTML、CSV、JSON；HTML 可直接打印成 PDF，挖空可保留或显示答案。
 - 提供免安装 Windows 便携包脚本（Node 运行时 + 生产依赖 + 前端产物 + 双击启动器）。
 
@@ -70,6 +70,67 @@ bnki 是一个给自己用的本地卡片复习工具。界面与操作习惯参
 | 统计：日历、曲线、到期预测、记忆保持率 | 设置：学习偏好与 FSRS 参数 |
 | --- | --- |
 | ![统计](assets/screenshots/stats.png) | ![设置](assets/screenshots/settings.png) |
+
+## ChatGPT 学习模式导入
+
+ChatGPT 学习模式的回答很少是纯文字：卡片式布局、彩色徽章、LaTeX 公式、mermaid 流程图、原生 SVG 示意图、网页抓来的照片、可编辑的写作块，全都混在一起。把这些回答变成复习卡片，难点不在解析 JSON，而在**让卡片里的图示和网页里长得一样**。
+
+<p align="center">
+  <img src="assets/screenshots/chatgpt-source.png" alt="ChatGPT 学习模式对话" width="860">
+</p>
+
+在对话页点一下右下角的「保存到 bnki」，整段对话就变成卡片集：每条 AI 回答一张笔记卡，图示是网页真实渲染的截图。
+
+| 导入后的卡片集 | 单张卡片：图示与网页一致 |
+| --- | --- |
+| ![导入后的卡片集](assets/screenshots/chatgpt-deck.png) | ![单张卡片](assets/screenshots/chatgpt-card.png) |
+
+### 怎么用
+
+1. 装 Tampermonkey，导入 [`scripts/chatgpt-to-bnki.user.js`](scripts/chatgpt-to-bnki.user.js)；
+2. 打开任意 ChatGPT 学习模式对话，右下角会出现「保存到 bnki」；
+3. 点一下，填入卡片集 ID（地址栏 `/deck/` 后面那串），回车。
+
+### 为什么不是「重画」
+
+第一版是把 ChatGPT 的组件重新画成 SVG。结果很糟：图标表里只有 4 个手抄的图标，未知图标静默退化成圆圈；徽章的圆角底色画不出来；原生 SVG 示意图直接丢失；公式变成 LaTeX 源码。
+
+结论是**重画注定追不上网页的渲染**。改成在页面里把真实 DOM 组件截成 PNG，视觉天然一致——失败模式也从「画错」变成「缺图」，而缺图是能被检查出来的。
+
+### 怎么采
+
+ChatGPT 用虚拟滚动，视口外的消息会被卸载；后台标签页会被浏览器冻结。所以采集分三步：
+
+1. 把滚动容器临时撑到整段对话的高度，让所有消息一次性挂载；
+2. 用 `modern-screenshot` 把每个组件克隆成 SVG `foreignObject`，再栅格化成 PNG；
+3. 截图前做两处修补：**伪元素实体化**（列表序号靠 `::before { content: counter(...) }` 渲染，截图库不处理伪元素）、**跨域图片内联**（`fetch` 和 `canvas.toDataURL` 都会被 CORS 拦住，改用 `GM_xmlhttpRequest` 取回字节转 data URL）。
+
+### 组件按载体分类
+
+| 载体 | 组件 | 处理 |
+| --- | --- | --- |
+| Markdown | text / title / list / table / blockquote / code / caption | 转 Markdown |
+| LaTeX | math | `$…$` / `$$…$$`，交给卡片自己的 KaTeX 渲染 |
+| 网页截图 | box / grid / row / svg / image / AsyncImage / mermaid / WritingBlock | 截成 PNG |
+| 行内拼接 | badge / Link / Cite | 拼回当前段落，否则会把表格行切断 |
+
+### 三个踩过的坑
+
+1. **按名字匹配会错位**：源码里叫 `AsyncImage`，网页里渲染成 `box`；`WritingBlock` 是 ProseMirror 编辑器 widget。按类型名匹配找不到截图，那张截图还会被下一个节点消费掉——不只是缺图，而是后面全部错位。改成**按文档顺序映射**：第 N 个视觉节点 ↔ 第 N 张截图，名字完全不参与匹配。
+2. **行内组件不能单独成块**：徽章在表格单元格里是行内标签，切成独立块会把表格行切断，只剩第一行第一列。
+3. **失败不能静默**：采集不到时先退化成文字，没有文字才写 `〔图示未采集〕`，绝不画空 SVG。
+
+### 回归网
+
+每次导入都会给每张卡做体检，检查 5 条结构不变量：
+
+- 视觉节点数 == 截图数
+- 没有残留的 DIL 标签（`<box` `<badge` `<AsyncImage` …）
+- 没有残留的 `\[` `\(`
+- 表格每行的列数 == 表头列数
+- 源码里的文字段落都能在卡片里找到
+
+任一不成立，提示条直接显示「⚠ K 张卡体检不通过」，不用逐张打开卡片核对。另有 5 段真实对话作为回归语料，10 个测试断言结构不变量 + 输出快照——改动弄坏任何一段都会失败。
 
 ## 技术方案
 
@@ -117,7 +178,8 @@ Node 进程同时提供 `web/dist` 打包页面，所以生产模式只需要一
 2. **挖空是一等公民**：行内 `{{答案}}` 语法、编辑器里的加/去挖空、复习时的揭示与计数、导出时「保留挖空 / 显示答案」，从编辑到输出是一条完整链路。
 3. **FSRS 落在共用层**：调度封装在 `shared/src/scheduler.ts`，前端用它算评分预览、后端用它写状态，两边不会算出不同的间隔；`now()` 可注入，测试可稳定覆盖换日、逾期、冲刺模式等边界。
 4. **本地数据可靠性**：软删除 + 回收站、小数 `position` 排序让拖拽只改一行、FTS5 用 trigram 适配中文、备份恢复时替换数据库连接（`ctx.reopen`）避免读到旧句柄。
-5. **验证不靠手点**：39 个测试文件、317 个测试覆盖 shared / server / web；另有 `docs/e2e-walkthrough.md` 记录在真实浏览器里逐项操作 P0 + P1 功能的结果，包括导入导出、备份恢复、朗读发声、窄屏和原型对照。
+5. **验证不靠手点**：41 个测试文件、349 个测试覆盖 shared / server / web；另有 `docs/e2e-walkthrough.md` 记录在真实浏览器里逐项操作 P0 + P1 功能的结果，包括导入导出、备份恢复、朗读发声、窄屏和原型对照。
+6. **导入不靠猜**：ChatGPT 导入把「视觉一致性」拆成可检查的性质——按文档顺序映射截图（名字不参与匹配）、组件按载体分类（Markdown / LaTeX / 截图 / 行内拼接）、采集失败退化成文字而不是空图；每次导入跑 5 条结构不变量体检，另有 5 段真实对话的回归语料兜底。
 
 ## 快速开始
 
@@ -151,14 +213,14 @@ bnki/
 ├─ web/           # React 前端、Tiptap 编辑器、学习页、统计与设置
 ├─ prototype/     # 设计阶段的 HTML 原型（界面与交互的参照）
 ├─ docs/          # 设计文档、接口约定、浏览器端到端走查记录
-├─ scripts/       # macOS LaunchAgent、Windows 便携包脚本
+├─ scripts/       # macOS LaunchAgent、Windows 便携包脚本、ChatGPT 导入用户脚本
 └─ data/          # 运行时数据：SQLite、media、backups（不进版本库）
 ```
 
 ## 测试与检查
 
 ```sh
-npm test           # 39 个测试文件 / 317 个测试
+npm test           # 41 个测试文件 / 349 个测试
 npm run typecheck  # shared、server、web 三个包的 strict 类型检查
 ```
 
