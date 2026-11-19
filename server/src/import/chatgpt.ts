@@ -839,13 +839,10 @@ export function renderAnswerMarkdownWithImages(
     if (node.type === 'text') {
       let t = (node.text ?? '').trim();
       if (!t) continue;
-      // 源码里的 \[ … \] 是块公式、\( … \) 是行内公式，网页都渲染成公式组件。
-      // 两者按出现顺序消费同一份 math 截图队列，行内公式用行内图片保持句子连贯。
-      t = t.replace(/\\\[([\s\S]*?)\\\]|\\\(([\s\S]*?)\\\)/g, (whole, block) => {
-        const path = takeImage('math');
-        if (path) return `![](${path})`;
-        return block !== undefined ? '〔公式〕' : whole;
-      });
+      // 公式是文本内容，不是图示：卡片本身用 KaTeX 渲染，转成 Markdown 的
+      // $…$（行内）和 $$…$$（块）即可，不截图，也就不会因为采集失败而丢公式。
+      t = t.replace(/\\\[([\s\S]*?)\\\]/g, (_w, body) => `$$\n${body.trim()}\n$$`);
+      t = t.replace(/\\\(([\s\S]*?)\\\)/g, (_w, body) => `$${body.trim()}$`);
       // ```mermaid 代码块在网页里渲染成流程图（app widget），用截图替换；
       // 没采集到就保留源码，至少内容不丢。
       t = t.replace(/```mermaid\s*\n([\s\S]*?)```/g, (whole) => {

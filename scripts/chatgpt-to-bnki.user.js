@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ChatGPT → bnki
 // @namespace    bnki
-// @version      3.1
+// @version      3.2
 // @description  在 ChatGPT 会话页点一下，把整段学习模式会话导入 bnki（每个 AI 回答一张笔记卡；图示按网页真实渲染截图保存，不再重画）。
 // @match        https://chatgpt.com/*
 // @match        https://chat.openai.com/*
@@ -66,7 +66,7 @@ return undefined;
   }
 
   setDiag({
-    version: '3.1',
+    version: '3.2',
     msInitError: MS_INIT_ERROR,
     msType: typeof MS,
     msKeys: MS ? Object.keys(MS).slice(0, 20) : null,
@@ -170,7 +170,8 @@ return undefined;
       const visuals = tops.filter((el) => {
         const type = el.getAttribute('data-d-component');
         if (TEXTISH.includes(type)) return false;
-        if (type === 'math' || type === 'badge') return false; // 单独按文档顺序采集
+        if (type === 'math') return false; // 公式走 KaTeX 文本，不截图
+        if (type === 'badge') return false; // 徽章单独按文档顺序采集
         if (type === 'radio-group' || type === 'radio' || type === 'button') return false;
         return !el.querySelector('input[type=radio],[role=radio]');
       });
@@ -187,26 +188,6 @@ return undefined;
             type: visuals[i].getAttribute('data-d-component'),
             dataUrl,
           });
-        } catch (e) {
-          // 单个失败不影响其它
-        } finally {
-          for (const s of pseudos) s.remove();
-        }
-      }
-
-      // 公式按文档顺序统一采集：顶层是块公式（源码 \[ … \]），嵌在 text
-      // 组件里的是行内公式（源码 \( … \)）。两者共用 'math' 队列，顺序和源码一致。
-      const maths = [...body.querySelectorAll('[data-d-component="math"]')].filter((el) => {
-        const anc = el.parentElement?.closest('[data-d-component]');
-        return !anc || anc.getAttribute('data-d-component') === 'text';
-      });
-      for (let i = 0; i < maths.length; i++) {
-        const key = mid + '-math-' + i;
-        if (captured.has(key)) continue;
-        const pseudos = materializePseudo(maths[i]);
-        try {
-          const dataUrl = await MS.domToPng(maths[i], { scale: 2 });
-          captured.set(key, { messageId: mid, domIndex: i, type: 'math', dataUrl });
         } catch (e) {
           // 单个失败不影响其它
         } finally {
@@ -348,7 +329,7 @@ return undefined;
       }
     }
     setDiag({
-      version: '3.1',
+      version: '3.2',
       msInitError: MS_INIT_ERROR,
       msType: typeof MS,
       msKeys: MS ? Object.keys(MS).slice(0, 20) : null,
@@ -373,7 +354,7 @@ return undefined;
         headers: { 'Content-Type': 'application/json' },
         data: JSON.stringify({ deckId, source: 'json', conversation: conv, images }),
         onload: (res) => {
-          setDiag({ version: '3.1', postStatus: res.status, postBody: (res.responseText || '').slice(0, 500) });
+          setDiag({ version: '3.2', postStatus: res.status, postBody: (res.responseText || '').slice(0, 500) });
           try {
             const body = JSON.parse(res.responseText);
             if (res.status >= 200 && res.status < 300) {
@@ -385,7 +366,7 @@ return undefined;
           }
         },
         onerror: (e) => {
-          setDiag({ version: '3.1', postError: String(e && (e.error || e.message || e)) });
+          setDiag({ version: '3.2', postError: String(e && (e.error || e.message || e)) });
           toast('连不上 bnki（localhost:18420）');
         },
       });

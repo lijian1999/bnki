@@ -129,13 +129,8 @@ describe('POST /api/import/chatgpt', () => {
     expect(fs.existsSync(path.join(tmpDir, media[0].path))).toBe(true);
   });
 
-  it('公式块用截图替换', async () => {
+  it('块公式转成 $$…$$，不截图', async () => {
     const deckId = insertDeck();
-    const png = Buffer.from(
-      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
-      'base64',
-    );
-    const dataUrl = `data:image/png;base64,${png.toString('base64')}`;
     const res = await app.inject({
       method: 'POST',
       url: '/api/import/chatgpt',
@@ -143,45 +138,33 @@ describe('POST /api/import/chatgpt', () => {
         deckId,
         source: 'json',
         conversation: conversation(['公式如下：\n\n\\[\nP=(2,0,0)\n\\]\n\n结束。']),
-        images: [{ messageId: 'a0', domIndex: 0, type: 'math', dataUrl }],
       },
     });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ cards: 1, media: 1, fallback: 0 });
+    expect(res.json()).toEqual({ cards: 1, media: 0, fallback: 0 });
     const front = (ctx.db.prepare(`SELECT front FROM items WHERE deck_id = ? AND kind = 'card'`).get(deckId) as any).front;
-    expect(front).toMatch(/!\[\]\(media\/[0-9a-f]{16}\.png\)/);
+    expect(front).toContain('$$');
+    expect(front).toContain('P=(2,0,0)');
     expect(front).not.toContain('\\[');
+    expect(front).not.toMatch(/media\//);
     expect(front).toContain('结束。');
   });
 
-  it('行内公式和块公式共用截图队列', async () => {
+  it('行内公式转成 $…$，保持行内', async () => {
     const deckId = insertDeck();
-    const png = Buffer.from(
-      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
-      'base64',
-    );
-    const dataUrl = `data:image/png;base64,${png.toString('base64')}`;
     const text = '先看块公式：\n\n\\[\nT_{map}(t)\n\\]\n\n这里的 \\(T\\) 是变换矩阵，\\(t\\) 是时刻。';
     const res = await app.inject({
       method: 'POST',
       url: '/api/import/chatgpt',
-      payload: {
-        deckId,
-        source: 'json',
-        conversation: conversation([text]),
-        images: [
-          { messageId: 'a0', domIndex: 0, type: 'math', dataUrl },
-          { messageId: 'a0', domIndex: 1, type: 'math', dataUrl },
-          { messageId: 'a0', domIndex: 2, type: 'math', dataUrl },
-        ],
-      },
+      payload: { deckId, source: 'json', conversation: conversation([text]) },
     });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ cards: 1, media: 3, fallback: 0 });
+    expect(res.json()).toEqual({ cards: 1, media: 0, fallback: 0 });
     const front = (ctx.db.prepare(`SELECT front FROM items WHERE deck_id = ? AND kind = 'card'`).get(deckId) as any).front;
-    expect(front.match(/!\[\]\(media\//g)?.length).toBe(3);
-    expect(front).not.toContain('〔公式〕');
-    expect(front).toContain('是变换矩阵');
+    expect(front).toContain('$$\nT_{map}(t)\n$$');
+    expect(front).toContain('这里的 $T$ 是变换矩阵，$t$ 是时刻。');
+    expect(front).not.toContain('\\(');
+    expect(front).not.toMatch(/media\//);
   });
 
   it('Link 组件变成 Markdown 链接', async () => {
