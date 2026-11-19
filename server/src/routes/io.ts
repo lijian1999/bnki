@@ -6,7 +6,7 @@ import { createHash } from 'node:crypto';
 import type { Ctx } from '../app';
 import { newId, notFound, badRequest } from '../util';
 import { parseImportText } from '@bnki/shared/importText';
-import { frontHash, mediaFileName, renderAnswerMarkdownWithImages, selectAssistantMessages, type CapturedImage } from '../import/chatgpt';
+import { frontHash, renderAnswerMarkdownWithImages, selectAssistantMessages, type CapturedImage } from '../import/chatgpt';
 
 interface ImportRow { section: string | null; front: string; back: string }
 interface MdStep { type: 'section' | 'card'; level?: number; title?: string; front?: string }
@@ -96,7 +96,6 @@ export default async function register(app: FastifyInstance, ctx: Ctx): Promise<
       for (const msg of messages) {
         const rendered = renderAnswerMarkdownWithImages(msg.text, imagesByMessage.get(msg.id) ?? [], {
           saveMedia: (bytes, mime) => saveChatgptMediaBytes(ctx, bytes, mime),
-          saveFallbackSvg: (svg) => saveChatgptMedia(ctx, svg),
         });
         media += rendered.media;
         fallback += rendered.fallback;
@@ -171,19 +170,6 @@ export default async function register(app: FastifyInstance, ctx: Ctx): Promise<
 function assertDeckExists(ctx: Ctx, deckId: string): void {
   const deck = ctx.db.prepare('SELECT id FROM decks WHERE id = ? AND deleted_at IS NULL').get(deckId);
   if (!deck) throw notFound('卡片集不存在');
-}
-
-/** 保存 ChatGPT 组件 SVG：按内容哈希去重，和 /api/media 共用 media 表。 */
-function saveChatgptMedia(ctx: Ctx, svg: string): { path: string; created: boolean } {
-  const filename = mediaFileName(svg);
-  const hash = filename.slice(0, -4);
-  const relativePath = `media/${filename}`;
-  const exists = ctx.db.prepare('SELECT hash FROM media WHERE hash = ?').get(hash);
-  if (exists) return { path: relativePath, created: false };
-  fs.writeFileSync(path.join(ctx.mediaDir, filename), svg);
-  ctx.db.prepare('INSERT INTO media (hash, path, mime, size, created_at) VALUES (?, ?, ?, ?, ?)')
-    .run(hash, relativePath, 'image/svg+xml', Buffer.byteLength(svg), ctx.now());
-  return { path: relativePath, created: true };
 }
 
 /** 保存网页采集到的图片字节（PNG/JPEG）：按内容哈希去重。 */

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ChatGPT → bnki
 // @namespace    bnki
-// @version      3.3
+// @version      3.4
 // @description  在 ChatGPT 会话页点一下，把整段学习模式会话导入 bnki（每个 AI 回答一张笔记卡；图示按网页真实渲染截图保存，不再重画）。
 // @match        https://chatgpt.com/*
 // @match        https://chat.openai.com/*
@@ -67,7 +67,7 @@ return undefined;
   }
 
   setDiag({
-    version: '3.3',
+    version: '3.4',
     msInitError: MS_INIT_ERROR,
     msType: typeof MS,
     msKeys: MS ? Object.keys(MS).slice(0, 20) : null,
@@ -213,12 +213,13 @@ return undefined;
     return restore;
   }
 
-  /** 截图一个节点：先内联跨域图片、实体化伪元素，截完把页面还原。 */
-  async function captureNode(node) {
+  /** 截图一个节点：先内联跨域图片、实体化伪元素，截完把页面还原。
+   *  行内徽章按 1 倍截，避免在正文里显得比文字大一倍；块级组件用 2 倍保证清晰。 */
+  async function captureNode(node, scale = 2) {
     const imgs = await inlineCrossOriginImages(node);
     const pseudos = materializePseudo(node);
     try {
-      return await MS.domToPng(node, { scale: 2 });
+      return await MS.domToPng(node, { scale });
     } finally {
       for (const s of pseudos) s.remove();
       for (const [img, src] of imgs) img.src = src;
@@ -268,7 +269,7 @@ return undefined;
         const key = mid + '-badge-' + i;
         if (captured.has(key)) continue;
         try {
-          const dataUrl = await captureNode(badges[i]);
+          const dataUrl = await captureNode(badges[i], 1);
           captured.set(key, { messageId: mid, domIndex: i, type: 'badge', dataUrl });
         } catch (e) {
           // 单个失败不影响其它
@@ -376,18 +377,18 @@ return undefined;
     let images = [];
     let captureError = null;
     if (!MS || typeof MS.domToPng !== 'function') {
-      toast('截图库没加载，图示将退回重画');
+      toast('截图库没加载，图示会退化成文字');
       captureError = 'MS 不可用：' + (MS_INIT_ERROR || 'undefined');
     } else {
       try {
         images = await captureAllFigures();
       } catch (e) {
         captureError = (e && (e.stack || e.message)) || String(e);
-        toast('图示采集失败，退回重画：' + e.message);
+        toast('图示采集失败，会退化成文字：' + e.message);
       }
     }
     setDiag({
-      version: '3.3',
+      version: '3.4',
       msInitError: MS_INIT_ERROR,
       msType: typeof MS,
       msKeys: MS ? Object.keys(MS).slice(0, 20) : null,
@@ -412,11 +413,11 @@ return undefined;
         headers: { 'Content-Type': 'application/json' },
         data: JSON.stringify({ deckId, source: 'json', conversation: conv, images }),
         onload: (res) => {
-          setDiag({ version: '3.3', postStatus: res.status, postBody: (res.responseText || '').slice(0, 500) });
+          setDiag({ version: '3.4', postStatus: res.status, postBody: (res.responseText || '').slice(0, 500) });
           try {
             const body = JSON.parse(res.responseText);
             if (res.status >= 200 && res.status < 300) {
-              const fb = body.fallback ? `，${body.fallback} 个图示退回重画` : '';
+              const fb = body.fallback ? `，${body.fallback} 个图示未采集（已退化成文字）` : '';
               toast(`已导入 ${body.cards} 张卡片、${body.media} 张图片${fb}`);
             } else toast(`导入失败：${body.message || res.status}`);
           } catch {
@@ -424,7 +425,7 @@ return undefined;
           }
         },
         onerror: (e) => {
-          setDiag({ version: '3.3', postError: String(e && (e.error || e.message || e)) });
+          setDiag({ version: '3.4', postError: String(e && (e.error || e.message || e)) });
           toast('连不上 bnki（localhost:18420）');
         },
       });

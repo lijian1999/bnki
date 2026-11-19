@@ -191,7 +191,7 @@ describe('POST /api/import/chatgpt', () => {
       payload: { deckId, source: 'json', conversation: conversation([text]) },
     });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ cards: 1, media: 0, fallback: 0 });
+    expect(res.json()).toEqual({ cards: 1, media: 0, fallback: 1 });
     const front = (ctx.db.prepare(`SELECT front FROM items WHERE deck_id = ? AND kind = 'card'`).get(deckId) as any).front;
     expect(front).toContain('学习主题');
     expect(front).toContain('计算机专业硕士');
@@ -211,6 +211,48 @@ describe('POST /api/import/chatgpt', () => {
     const front = (ctx.db.prepare(`SELECT front FROM items WHERE deck_id = ? AND kind = 'card'`).get(deckId) as any).front;
     expect(front).toContain('〔引用〕');
     expect(front).not.toContain('FileCite');
+    expect(front).not.toMatch(/media\//);
+  });
+
+  it('表格单元格里的徽章保持行内，不破坏表格', async () => {
+    const deckId = insertDeck();
+    const png = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+      'base64',
+    );
+    const dataUrl = `data:image/png;base64,${png.toString('base64')}`;
+    const text = '| 你的理解 | 判断 |\n|---|---|\n| 外参固定 | <badge color="success">基本正确</badge> |';
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/import/chatgpt',
+      payload: {
+        deckId,
+        source: 'json',
+        conversation: conversation([text]),
+        images: [{ messageId: 'a0', domIndex: 0, type: 'badge', dataUrl }],
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ cards: 1, media: 1, fallback: 0 });
+    const front = (ctx.db.prepare(`SELECT front FROM items WHERE deck_id = ? AND kind = 'card'`).get(deckId) as any).front;
+    // 表格行必须完整：徽章图片嵌在单元格里，而不是被切成独立块
+    expect(front).toContain('| 外参固定 | ![](media/');
+    expect(front).toContain('|');
+    expect(front.split('\n').filter((l: string) => l.includes('media/')).length).toBe(1);
+  });
+
+  it('徽章采集不到时退化成文字，仍在行内', async () => {
+    const deckId = insertDeck();
+    const text = '| 判断 |\n|---|\n| <badge color="warning">需要修正</badge> |';
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/import/chatgpt',
+      payload: { deckId, source: 'json', conversation: conversation([text]) },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ cards: 1, media: 0, fallback: 0 });
+    const front = (ctx.db.prepare(`SELECT front FROM items WHERE deck_id = ? AND kind = 'card'`).get(deckId) as any).front;
+    expect(front).toContain('| 需要修正 |');
     expect(front).not.toMatch(/media\//);
   });
 
@@ -253,7 +295,7 @@ describe('POST /api/import/chatgpt', () => {
     expect(front).toContain('flowchart TD');
   });
 
-  it('每条 AI 回答一张笔记卡，Markdown 保留，图示变成 SVG 图片', async () => {
+  it('每条 AI 回答一张笔记卡，Markdown 保留，图示采集不到时退化成文字', async () => {
     const deckId = insertDeck();
     const res = await app.inject({
       method: 'POST',
@@ -261,7 +303,7 @@ describe('POST /api/import/chatgpt', () => {
       payload: { deckId, source: 'json', conversation: conversation([MARKDOWN]) },
     });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ cards: 1, media: 1, fallback: 1 });
+    expect(res.json()).toEqual({ cards: 1, media: 0, fallback: 1 });
 
     const items = ctx.db.prepare(`SELECT * FROM items WHERE deck_id = ? AND kind = 'card' ORDER BY position`).all(deckId) as any[];
     expect(items.length).toBe(1);
@@ -276,8 +318,16 @@ describe('POST /api/import/chatgpt', () => {
     expect(front).toContain('| 命令 | 效果 |');
     expect(front).toContain('```bash\ndocker ps\n```');
 
-    // 图示变成图片，选择题保留静态文字
-    expect(front).toMatch(/!\[\]\(media\/[0-9a-f]{16}\.svg\)/);
+    // 采集不到：退化成文字，不画空 SVG
+    expect(front).not.toMatch(/media\//);
+    expect(front).toContain('运行关系示意');
+    expect(front).toContain('宿主机终端');
+    expect(front).toContain('Docker 容器');
+    expect(front).toContain('Bash 进程');
+    expect(front).toContain('容器主进程 PID 1');
+    expect(front).toContain('当前终端连接到容器内的 Bash');
+
+    // 选择题保留静态文字
     expect(front).toContain('A. 只关闭 Bash，容器仍然运行。');
     expect(front).toContain('B. Bash 退出，同时容器停止运行。');
     expect(front).toContain('提交答案');
@@ -285,19 +335,8 @@ describe('POST /api/import/chatgpt', () => {
     expect(front).not.toContain('<radio');
     expect(front).not.toContain('<button');
 
-    // 媒体文件存在，SVG 里包含图示文字
-    const mediaRows = ctx.db.prepare('SELECT * FROM media').all() as any[];
-    expect(mediaRows.length).toBe(1);
-    const svgPath = path.join(tmpDir, mediaRows[0].path);
-    expect(fs.existsSync(svgPath)).toBe(true);
-    const svg = fs.readFileSync(svgPath, 'utf8');
-    expect(svg).toContain('<foreignObject');
-    expect(svg).toContain('运行关系示意');
-    expect(svg).toContain('宿主机终端');
-    expect(svg).toContain('Docker 容器');
-    expect(svg).toContain('Bash 进程');
-    expect(svg).toContain('容器主进程 PID 1');
-    expect(svg).toContain('当前终端连接到容器内的 Bash');
+    // 不再生成 SVG 兜底文件
+    expect(ctx.db.prepare('SELECT COUNT(*) AS n FROM media').get() as any).toEqual({ n: 0 });
   });
 
   it('多条回答按顺序建卡', async () => {
@@ -321,14 +360,14 @@ describe('POST /api/import/chatgpt', () => {
     const before = ctx.db.prepare(`SELECT id, front, updated_at FROM items WHERE deck_id = ? AND kind = 'card'`).get(deckId) as any;
     const second = await app.inject({ method: 'POST', url: '/api/import/chatgpt', payload: { deckId, source: 'json', conversation: conv } });
     expect(second.statusCode).toBe(200);
-    expect(second.json()).toEqual({ cards: 1, media: 1, fallback: 1 });
+    expect(second.json()).toEqual({ cards: 1, media: 0, fallback: 1 });
 
     const items = ctx.db.prepare(`SELECT id, front, updated_at FROM items WHERE deck_id = ? AND kind = 'card'`).all(deckId) as any[];
     expect(items.length).toBe(1);
     expect(items[0].id).toBe(before.id);
     expect(items[0].front).toBe(before.front);
     expect(items[0].updated_at).toBe(before.updated_at);
-    expect(ctx.db.prepare('SELECT COUNT(*) AS n FROM media').get() as any).toEqual({ n: 1 });
+    expect(ctx.db.prepare('SELECT COUNT(*) AS n FROM media').get() as any).toEqual({ n: 0 });
     expect(ctx.db.prepare('SELECT COUNT(*) AS n FROM edit_logs WHERE action = ?').get('update') as any).toEqual({ n: 0 });
   });
 
@@ -342,7 +381,7 @@ describe('POST /api/import/chatgpt', () => {
 
     const second = await app.inject({ method: 'POST', url: '/api/import/chatgpt', payload: { deckId, source: 'json', conversation: conv } });
     expect(second.statusCode).toBe(200);
-    expect(second.json()).toEqual({ cards: 1, media: 1, fallback: 1 });
+    expect(second.json()).toEqual({ cards: 1, media: 0, fallback: 1 });
     const after = ctx.db.prepare(`SELECT front FROM items WHERE id = ?`).get(card.id) as any;
     expect(after.front).toBe('用户改过的内容');
   });

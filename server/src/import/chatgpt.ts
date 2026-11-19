@@ -290,6 +290,24 @@ function textContent(node: DilNode): string {
   return (node.children ?? []).map((c) => (c.type === 'text' ? c.text ?? '' : textContent(c))).join('');
 }
 
+/**
+ * 组件采集不到时的退化文字：按子节点逐段收集，保留段落分隔，
+ * 而不是把所有文字粘成一坨。
+ */
+function fallbackText(node: DilNode): string {
+  const out: string[] = [];
+  const walk = (n: DilNode) => {
+    if (n.type === 'text') {
+      const t = (n.text ?? '').trim();
+      if (t) out.push(t);
+      return;
+    }
+    for (const c of n.children ?? []) walk(c);
+  };
+  walk(node);
+  return out.join('\n\n');
+}
+
 function paragraphs(node: DilNode): string[] {
   const raw = (node.type === 'text' ? node.text ?? '' : textContent(node)).trim();
   if (!raw) return [];
@@ -791,13 +809,12 @@ export interface CapturedImage {
 export interface RenderWithImagesOptions {
   /** 保存采集到的图片字节。 */
   saveMedia: (bytes: Buffer, mime: string) => { path: string; created: boolean };
-  /** 没采集到图片时退回重画 SVG，保证图示不缺失。 */
-  saveFallbackSvg: (svg: string) => { path: string; created: boolean };
 }
 
 /**
  * 把一条回答转成卡片正面 Markdown：文字保留 Markdown，图示用网页真实截图。
- * 优先用采集到的图片；采集不到才退回重画 SVG，并计入 fallback。
+ * 组件按载体分类：文字类转 Markdown / LaTeX，视觉类截图，行内组件拼回段落。
+ * 采集不到的组件退化成文字内容（没有文字才写占位符），并计入 fallback。
  */
 export function renderAnswerMarkdownWithImages(
   text: string,
@@ -835,10 +852,19 @@ export function renderAnswerMarkdownWithImages(
     return im ? saveImage(im) : null;
   };
 
+  // 行内组件（徽章、链接、引用）要拼回当前段落，否则会把表格行/句子切成碎片。
+  // 只有块级组件才另起一块。
+  let buf = '';
+  const flush = () => {
+    const t = buf.trim();
+    if (t) blocks.push(t);
+    buf = '';
+  };
+  const INLINE_TAGS = new Set(['badge', 'Link', 'Cite', 'FileCite']);
+
   for (const node of nodes) {
     if (node.type === 'text') {
-      let t = (node.text ?? '').trim();
-      if (!t) continue;
+      let t = node.text ?? '';
       // 公式是文本内容，不是图示：卡片本身用 KaTeX 渲染，转成 Markdown 的
       // $…$（行内）和 $$…$$（块）即可，不截图，也就不会因为采集失败而丢公式。
       t = t.replace(/\\\[([\s\S]*?)\\\]/g, (_w, body) => `$$\n${body.trim()}\n$$`);
@@ -849,57 +875,64 @@ export function renderAnswerMarkdownWithImages(
         const path = takeImage('mermaid');
         return path ? `![](${path})` : whole;
       });
-      blocks.push(t);
+      buf += t;
       continue;
     }
-    if (node.tag === 'Cite' || node.tag === 'FileCite') continue;
-    if (node.tag === 'divider') {
+
+    const tag = node.tag ?? '';
+    if (tag === 'Cite' || tag === 'FileCite') continue;
+
+    if (INLINE_TAGS.has(tag)) {
+      if (tag === 'badge') {
+        const path = takeImage('badge');
+        buf += path ? `![](${path})` : textContent(node).trim();
+      } else if (tag === 'Link') {
+        const url = strAttr(node, 'url');
+        const title = strAttr(node, 'title') || url;
+        buf += url ? `[${title}](${url})` : title;
+      }
+      continue;
+    }
+
+    flush();
+    if (tag === 'divider') {
       blocks.push('---');
       continue;
     }
-    if (node.tag === 'box' && isChoiceBox(node)) {
+    if (tag === 'box' && isChoiceBox(node)) {
       const md = choiceMarkdown(node);
       if (md) blocks.push(md);
       continue;
     }
-    if (node.tag === 'radio-group' || node.tag === 'radio' || node.tag === 'button') {
+    if (tag === 'radio-group' || tag === 'radio' || tag === 'button') {
       const md = choiceMarkdown(node);
       if (md) blocks.push(md);
       continue;
     }
-    if (node.tag === 'Link') {
-      const url = strAttr(node, 'url');
-      const title = strAttr(node, 'title') || url;
-      if (url) blocks.push(`[${title}](${url})`);
+    if (tag === 'text') {
+      const t = fallbackText(node);
+      if (t) blocks.push(t);
       continue;
     }
-    if (node.tag === 'WritingBlock') {
+    if (tag === 'WritingBlock') {
       const path = takeImage('writing-block');
       if (path) {
         blocks.push(`![](${path})`);
         continue;
       }
-      const t = textContent(node).trim();
-      if (t) blocks.push(t);
-      continue;
     }
-    if (node.tag === 'text') {
-      const t = textContent(node).trim();
-      if (t) blocks.push(t);
-      continue;
-    }
-    const path = takeImage(node.tag ?? '');
+    const path = takeImage(tag);
     if (path) {
       blocks.push(`![](${path})`);
       continue;
     }
-    // 采集不到 → 退回重画，避免图示缺失
-    const svg = componentSvg(node);
-    const saved = opts.saveFallbackSvg(svg);
-    media++;
+    // 采集不到：先退化成文字内容；连文字都没有才写占位符。
+    // 绝不画空 SVG —— 空条既没内容又误导。
     fallback++;
-    blocks.push(`![](${saved.path})`);
+    const t = fallbackText(node);
+    blocks.push(t || '〔图示未采集〕');
   }
+  flush();
   return { markdown: blocks.join('\n\n').trim(), media, fallback };
 }
 
