@@ -113,11 +113,11 @@ describe('POST /api/import/chatgpt', () => {
         deckId,
         source: 'json',
         conversation: conv,
-        images: [{ messageId, domIndex: 0, type: 'box', dataUrl }],
+        images: [{ messageId, domIndex: 0, type: 'component', dataUrl }],
       },
     });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ cards: 1, media: 1, fallback: 0 });
+    expect(res.json()).toMatchObject({ cards: 1, media: 1, fallback: 0 });
 
     const front = (ctx.db.prepare(`SELECT front FROM items WHERE deck_id = ? AND kind = 'card'`).get(deckId) as any).front;
     expect(front).toMatch(/!\[\]\(media\/[0-9a-f]{16}\.png\)/);
@@ -141,7 +141,7 @@ describe('POST /api/import/chatgpt', () => {
       },
     });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ cards: 1, media: 0, fallback: 0 });
+    expect(res.json()).toMatchObject({ cards: 1, media: 0, fallback: 0 });
     const front = (ctx.db.prepare(`SELECT front FROM items WHERE deck_id = ? AND kind = 'card'`).get(deckId) as any).front;
     expect(front).toContain('$$');
     expect(front).toContain('P=(2,0,0)');
@@ -159,7 +159,7 @@ describe('POST /api/import/chatgpt', () => {
       payload: { deckId, source: 'json', conversation: conversation([text]) },
     });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ cards: 1, media: 0, fallback: 0 });
+    expect(res.json()).toMatchObject({ cards: 1, media: 0, fallback: 0 });
     const front = (ctx.db.prepare(`SELECT front FROM items WHERE deck_id = ? AND kind = 'card'`).get(deckId) as any).front;
     expect(front).toContain('$$\nT_{map}(t)\n$$');
     expect(front).toContain('这里的 $T$ 是变换矩阵，$t$ 是时刻。');
@@ -176,7 +176,7 @@ describe('POST /api/import/chatgpt', () => {
       payload: { deckId, source: 'json', conversation: conversation([text]) },
     });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ cards: 1, media: 0, fallback: 0 });
+    expect(res.json()).toMatchObject({ cards: 1, media: 0, fallback: 0 });
     const front = (ctx.db.prepare(`SELECT front FROM items WHERE deck_id = ? AND kind = 'card'`).get(deckId) as any).front;
     expect(front).toContain('[ROS 1 官方 tf 教程](https://wiki.ros.org/tf/Tutorials)');
     expect(front).not.toContain('<Link');
@@ -191,7 +191,7 @@ describe('POST /api/import/chatgpt', () => {
       payload: { deckId, source: 'json', conversation: conversation([text]) },
     });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ cards: 1, media: 0, fallback: 1 });
+    expect(res.json()).toMatchObject({ cards: 1, media: 0, fallback: 1 });
     const front = (ctx.db.prepare(`SELECT front FROM items WHERE deck_id = ? AND kind = 'card'`).get(deckId) as any).front;
     expect(front).toContain('学习主题');
     expect(front).toContain('计算机专业硕士');
@@ -207,7 +207,7 @@ describe('POST /api/import/chatgpt', () => {
       payload: { deckId, source: 'json', conversation: conversation([text]) },
     });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ cards: 1, media: 0, fallback: 0 });
+    expect(res.json()).toMatchObject({ cards: 1, media: 0, fallback: 0 });
     const front = (ctx.db.prepare(`SELECT front FROM items WHERE deck_id = ? AND kind = 'card'`).get(deckId) as any).front;
     expect(front).toContain('〔引用〕');
     expect(front).not.toContain('FileCite');
@@ -233,7 +233,7 @@ describe('POST /api/import/chatgpt', () => {
       },
     });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ cards: 1, media: 1, fallback: 0 });
+    expect(res.json()).toMatchObject({ cards: 1, media: 1, fallback: 0 });
     const front = (ctx.db.prepare(`SELECT front FROM items WHERE deck_id = ? AND kind = 'card'`).get(deckId) as any).front;
     // 表格行必须完整：徽章图片嵌在单元格里，而不是被切成独立块
     expect(front).toContain('| 外参固定 | ![](media/');
@@ -250,7 +250,7 @@ describe('POST /api/import/chatgpt', () => {
       payload: { deckId, source: 'json', conversation: conversation([text]) },
     });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ cards: 1, media: 0, fallback: 0 });
+    expect(res.json()).toMatchObject({ cards: 1, media: 0, fallback: 0 });
     const front = (ctx.db.prepare(`SELECT front FROM items WHERE deck_id = ? AND kind = 'card'`).get(deckId) as any).front;
     expect(front).toContain('| 需要修正 |');
     expect(front).not.toMatch(/media\//);
@@ -275,7 +275,7 @@ describe('POST /api/import/chatgpt', () => {
       },
     });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ cards: 1, media: 1, fallback: 0 });
+    expect(res.json()).toMatchObject({ cards: 1, media: 1, fallback: 0 });
     const front = (ctx.db.prepare(`SELECT front FROM items WHERE deck_id = ? AND kind = 'card'`).get(deckId) as any).front;
     expect(front).toMatch(/!\[\]\(media\/[0-9a-f]{16}\.png\)/);
     expect(front).not.toContain('flowchart TD');
@@ -303,7 +303,7 @@ describe('POST /api/import/chatgpt', () => {
       payload: { deckId, source: 'json', conversation: conversation([MARKDOWN]) },
     });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ cards: 1, media: 0, fallback: 1 });
+    expect(res.json()).toMatchObject({ cards: 1, media: 0, fallback: 1 });
 
     const items = ctx.db.prepare(`SELECT * FROM items WHERE deck_id = ? AND kind = 'card' ORDER BY position`).all(deckId) as any[];
     expect(items.length).toBe(1);
@@ -339,6 +339,68 @@ describe('POST /api/import/chatgpt', () => {
     expect(ctx.db.prepare('SELECT COUNT(*) AS n FROM media').get() as any).toEqual({ n: 0 });
   });
 
+  it('截图数和视觉节点数不一致时报告 mismatch', async () => {
+    const deckId = insertDeck();
+    const png = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+      'base64',
+    );
+    const dataUrl = `data:image/png;base64,${png.toString('base64')}`;
+    // 两个视觉节点（两个 box），只给一张截图
+    const text = '<box gap={1}>甲</box>\n\n<box gap={1}>乙</box>';
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/import/chatgpt',
+      payload: {
+        deckId,
+        source: 'json',
+        conversation: conversation([text]),
+        images: [{ messageId: 'a0', domIndex: 0, type: 'component', dataUrl }],
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.mismatch).toBe(1);
+    expect(body.issues.length).toBe(1);
+    expect(body.issues[0].visualNodes).toBe(2);
+    expect(body.issues[0].componentImages).toBe(1);
+    // 缺的那张退化成文字，不丢内容
+    const front = (ctx.db.prepare(`SELECT front FROM items WHERE deck_id = ? AND kind = 'card'`).get(deckId) as any).front;
+    expect(front).toContain('乙');
+  });
+
+  it('视觉节点按文档顺序消费截图，不看类型名', async () => {
+    const deckId = insertDeck();
+    const png = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+      'base64',
+    );
+    const dataUrl = `data:image/png;base64,${png.toString('base64')}`;
+    // AsyncImage 在网页里渲染成 box：类型名对不上，但顺序对得上
+    const text = '<box gap={1}>甲</box>\n\n<AsyncImage query="robot" aspectRatio="16:9"/>\n\n<box gap={1}>乙</box>';
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/import/chatgpt',
+      payload: {
+        deckId,
+        source: 'json',
+        conversation: conversation([text]),
+        images: [
+          { messageId: 'a0', domIndex: 0, type: 'component', dataUrl },
+          { messageId: 'a0', domIndex: 1, type: 'component', dataUrl },
+          { messageId: 'a0', domIndex: 2, type: 'component', dataUrl },
+        ],
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.mismatch).toBe(0);
+    expect(body.fallback).toBe(0);
+    const front = (ctx.db.prepare(`SELECT front FROM items WHERE deck_id = ? AND kind = 'card'`).get(deckId) as any).front;
+    expect(front.match(/!\[\]\(media\//g)?.length).toBe(3);
+    expect(front).not.toContain('〔图示未采集〕');
+  });
+
   it('多条回答按顺序建卡', async () => {
     const deckId = insertDeck();
     const res = await app.inject({
@@ -360,7 +422,7 @@ describe('POST /api/import/chatgpt', () => {
     const before = ctx.db.prepare(`SELECT id, front, updated_at FROM items WHERE deck_id = ? AND kind = 'card'`).get(deckId) as any;
     const second = await app.inject({ method: 'POST', url: '/api/import/chatgpt', payload: { deckId, source: 'json', conversation: conv } });
     expect(second.statusCode).toBe(200);
-    expect(second.json()).toEqual({ cards: 1, media: 0, fallback: 1 });
+    expect(second.json()).toMatchObject({ cards: 1, media: 0, fallback: 1 });
 
     const items = ctx.db.prepare(`SELECT id, front, updated_at FROM items WHERE deck_id = ? AND kind = 'card'`).all(deckId) as any[];
     expect(items.length).toBe(1);
@@ -381,7 +443,7 @@ describe('POST /api/import/chatgpt', () => {
 
     const second = await app.inject({ method: 'POST', url: '/api/import/chatgpt', payload: { deckId, source: 'json', conversation: conv } });
     expect(second.statusCode).toBe(200);
-    expect(second.json()).toEqual({ cards: 1, media: 0, fallback: 1 });
+    expect(second.json()).toMatchObject({ cards: 1, media: 0, fallback: 1 });
     const after = ctx.db.prepare(`SELECT front FROM items WHERE id = ?`).get(card.id) as any;
     expect(after.front).toBe('用户改过的内容');
   });

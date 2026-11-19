@@ -811,6 +811,59 @@ export interface RenderWithImagesOptions {
   saveMedia: (bytes: Buffer, mime: string) => { path: string; created: boolean };
 }
 
+/** 卡片体检：结构性质检查，不针对某个具体组件。 */
+export interface CardReport {
+  /** 源码里的块级视觉节点数。 */
+  visualNodes: number;
+  /** 实际用上的块级截图数。 */
+  componentImages: number;
+  /** 采集不到、退化成文字的节点数。 */
+  fallback: number;
+  /** 卡片里残留的 DIL 标签。 */
+  leftoverTags: string[];
+  /** 卡片里残留的 LaTeX 分隔符个数。 */
+  leftoverLatex: number;
+  /** 行数与表头不一致的表格个数。 */
+  brokenTables: number;
+  /** 源码里有、卡片里找不到的文字段落。 */
+  missingText: string[];
+}
+
+const DIL_TAG_RE = /<(?:box|badge|Link|AsyncImage|WritingBlock|radio-group|radio|button|grid|grid-item|row|caption|icon|title|list|list-item|text)\b/g;
+
+function stripCodeFences(md: string): string {
+  return md.replace(/```[\s\S]*?```/g, '');
+}
+
+function collapse(s: string): string {
+  return s.replace(/\s+/g, ' ').trim();
+}
+
+/** 表格完整性：每个表格块里，每一行的单元格数必须等于表头列数。 */
+function brokenTableCount(md: string): number {
+  const lines = md.split('\n');
+  let broken = 0;
+  let headerCells = 0;
+  let inTable = false;
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line.startsWith('|')) {
+      inTable = false;
+      headerCells = 0;
+      continue;
+    }
+    const cells = line.split('|').slice(1, -1).length;
+    if (!inTable) {
+      inTable = true;
+      headerCells = cells;
+      continue;
+    }
+    if (/^\|[-:\s|]+\|$/.test(line)) continue; // 分隔行
+    if (cells !== headerCells) broken++;
+  }
+  return broken;
+}
+
 /**
  * 把一条回答转成卡片正面 Markdown：文字保留 Markdown，图示用网页真实截图。
  * 组件按载体分类：文字类转 Markdown / LaTeX，视觉类截图，行内组件拼回段落。
@@ -820,7 +873,7 @@ export function renderAnswerMarkdownWithImages(
   text: string,
   images: CapturedImage[],
   opts: RenderWithImagesOptions,
-): { markdown: string; media: number; fallback: number } {
+): { markdown: string; media: number; fallback: number; report: CardReport } {
   // Cite / FileCite 都是行内引用标记，复制成文字后保留一个灰色占位。
   const cleaned = text.replace(/<(?:File)?Cite\b[^>]*\/>/g, '〔引用〕');
   const nodes = parseDil(cleaned);
@@ -835,6 +888,9 @@ export function renderAnswerMarkdownWithImages(
 
   let media = 0;
   let fallback = 0;
+  let visualNodes = 0;
+  let componentImages = 0;
+  const expectedText: string[] = [];
   const blocks: string[] = [];
 
   const saveImage = (im: CapturedImage): string | null => {
@@ -875,6 +931,9 @@ export function renderAnswerMarkdownWithImages(
         const path = takeImage('mermaid');
         return path ? `![](${path})` : whole;
       });
+      // 体检用：这段文字应该在卡片里能找到（公式部分除外，公式会被替换成图片/文本）。
+      const plain = collapse(t.replace(/\\\[[\s\S]*?\\\]/g, '').replace(/\\\([\s\S]*?\\\)/g, ''));
+      if (plain) expectedText.push(plain);
       buf += t;
       continue;
     }
@@ -914,15 +973,13 @@ export function renderAnswerMarkdownWithImages(
       if (t) blocks.push(t);
       continue;
     }
-    if (tag === 'WritingBlock') {
-      const path = takeImage('writing-block');
-      if (path) {
-        blocks.push(`![](${path})`);
-        continue;
-      }
-    }
-    const path = takeImage(tag);
+    // 块级视觉节点不看类型名，按文档顺序取下一张截图：
+    // AsyncImage 在网页里渲染成 box、WritingBlock 渲染成编辑器 widget，
+    // 名字对不上也不会错位。
+    visualNodes++;
+    const path = takeImage('component');
     if (path) {
+      componentImages++;
       blocks.push(`![](${path})`);
       continue;
     }
@@ -933,7 +990,19 @@ export function renderAnswerMarkdownWithImages(
     blocks.push(t || '〔图示未采集〕');
   }
   flush();
-  return { markdown: blocks.join('\n\n').trim(), media, fallback };
+  const markdown = blocks.join('\n\n').trim();
+  const noCode = stripCodeFences(markdown);
+  const flat = collapse(markdown);
+  const report: CardReport = {
+    visualNodes,
+    componentImages,
+    fallback,
+    leftoverTags: [...new Set(noCode.match(DIL_TAG_RE) ?? [])],
+    leftoverLatex: (noCode.match(/\\\[|\\\(/g) ?? []).length,
+    brokenTables: brokenTableCount(markdown),
+    missingText: expectedText.filter((t) => !flat.includes(t)),
+  };
+  return { markdown, media, fallback, report };
 }
 
 /** 把一条回答转成卡片正面 Markdown：文字保留 Markdown，组件换成 SVG 图片（旧路线，作为兜底保留）。 */

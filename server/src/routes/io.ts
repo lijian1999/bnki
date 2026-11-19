@@ -6,7 +6,13 @@ import { createHash } from 'node:crypto';
 import type { Ctx } from '../app';
 import { newId, notFound, badRequest } from '../util';
 import { parseImportText } from '@bnki/shared/importText';
-import { frontHash, renderAnswerMarkdownWithImages, selectAssistantMessages, type CapturedImage } from '../import/chatgpt';
+import {
+  frontHash,
+  renderAnswerMarkdownWithImages,
+  selectAssistantMessages,
+  type CardReport,
+  type CapturedImage,
+} from '../import/chatgpt';
 
 interface ImportRow { section: string | null; front: string; back: string }
 interface MdStep { type: 'section' | 'card'; level?: number; title?: string; front?: string }
@@ -91,6 +97,7 @@ export default async function register(app: FastifyInstance, ctx: Ctx): Promise<
     let cards = 0;
     let media = 0;
     let fallback = 0;
+    const reports: (CardReport & { messageId: string })[] = [];
 
     ctx.db.transaction(() => {
       for (const msg of messages) {
@@ -99,6 +106,7 @@ export default async function register(app: FastifyInstance, ctx: Ctx): Promise<
         });
         media += rendered.media;
         fallback += rendered.fallback;
+        reports.push({ messageId: msg.id, ...rendered.report });
         const hash = frontHash(rendered.markdown);
         const entry = existing[msg.id];
         const cardId = typeof entry === 'string' ? entry : entry?.cardId;
@@ -129,7 +137,18 @@ export default async function register(app: FastifyInstance, ctx: Ctx): Promise<
       displayCfg.chatgptImport = { conversationId, cards: existing };
       ctx.db.prepare('UPDATE decks SET display_cfg = ?, updated_at = ? WHERE id = ?').run(JSON.stringify(displayCfg), now, deckId);
     })();
-    return { cards, media, fallback };
+
+    // 体检：结构性质检查，任何一条不成立都说明卡片和对话不一致。
+    const issues = reports.filter(
+      (r) =>
+        r.visualNodes !== r.componentImages ||
+        r.leftoverTags.length > 0 ||
+        r.leftoverLatex > 0 ||
+        r.brokenTables > 0 ||
+        r.missingText.length > 0,
+    );
+    const mismatch = reports.reduce((n, r) => n + Math.abs(r.visualNodes - r.componentImages), 0);
+    return { cards, media, fallback, mismatch, issues, reports };
   });
 
   app.post('/api/import/markdown', async (req) => {

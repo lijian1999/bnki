@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ChatGPT → bnki
 // @namespace    bnki
-// @version      3.4
+// @version      4.0
 // @description  在 ChatGPT 会话页点一下，把整段学习模式会话导入 bnki（每个 AI 回答一张笔记卡；图示按网页真实渲染截图保存，不再重画）。
 // @match        https://chatgpt.com/*
 // @match        https://chat.openai.com/*
@@ -67,7 +67,7 @@ return undefined;
   }
 
   setDiag({
-    version: '3.4',
+    version: '4.0',
     msInitError: MS_INIT_ERROR,
     msType: typeof MS,
     msKeys: MS ? Object.keys(MS).slice(0, 20) : null,
@@ -233,28 +233,36 @@ return undefined;
       const tops = [...body.querySelectorAll('[data-d-component]')].filter(
         (el) => !el.parentElement?.closest('[data-d-component]'),
       );
-      // 选择题组件（radio-group / radio / button）交给服务端渲染成选项文字，
-      // 不截图；其它组件即使内部有按钮（图片框的展开按钮）也要截图。
+      // 块级视觉组件：统一成一个队列，按文档顺序编号。
+      // 选择题组件（radio-group / radio / button）交给服务端渲染成选项文字，不截图；
+      // 其它组件即使内部有按钮（图片框的展开按钮）也要截图。
+      // 服务端不看类型名、只看顺序（第 N 个视觉节点 ↔ 第 N 张截图），
+      // 这样 AsyncImage 渲染成 box、WritingBlock 渲染成编辑器 widget 都不会错位。
       const visuals = tops.filter((el) => {
         const type = el.getAttribute('data-d-component');
         if (TEXTISH.includes(type)) return false;
         if (type === 'math') return false; // 公式走 KaTeX 文本，不截图
-        if (type === 'badge') return false; // 徽章单独按文档顺序采集
+        if (type === 'badge') return false; // 徽章是行内组件，单独采集
         if (type === 'radio-group' || type === 'radio' || type === 'button') return false;
         return !el.querySelector('input[type=radio],[role=radio]');
       });
-      for (let i = 0; i < visuals.length; i++) {
-        const key = mid + '-' + i;
+
+      // WritingBlock 是 ProseMirror 编辑器 widget，不在 data-d-component 里，
+      // 但它也是块级视觉节点，和上面的组件一起按文档顺序排。
+      const wbs = [...body.querySelectorAll('[class*="writing-block-editor"]')].filter(
+        (el) => !el.parentElement?.closest('[class*="writing-block-editor"]'),
+      );
+
+      const blocks = [...visuals, ...wbs].sort((a, b) =>
+        a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1,
+      );
+      for (let i = 0; i < blocks.length; i++) {
+        const key = mid + '-comp-' + i;
         if (captured.has(key)) continue;
         try {
           // domToPng 是异步的，必须 await，否则拿到的是 Promise 而不是 data URL。
-          const dataUrl = await captureNode(visuals[i]);
-          captured.set(key, {
-            messageId: mid,
-            domIndex: i,
-            type: visuals[i].getAttribute('data-d-component'),
-            dataUrl,
-          });
+          const dataUrl = await captureNode(blocks[i]);
+          captured.set(key, { messageId: mid, domIndex: i, type: 'component', dataUrl });
         } catch (e) {
           // 单个失败不影响其它
         }
@@ -271,21 +279,6 @@ return undefined;
         try {
           const dataUrl = await captureNode(badges[i], 1);
           captured.set(key, { messageId: mid, domIndex: i, type: 'badge', dataUrl });
-        } catch (e) {
-          // 单个失败不影响其它
-        }
-      }
-
-      // WritingBlock 是 ProseMirror 编辑器 widget，也不是 data-d-component。
-      const wbs = [...body.querySelectorAll('[class*="writing-block-editor"]')].filter(
-        (el) => !el.parentElement?.closest('[class*="writing-block-editor"]'),
-      );
-      for (let i = 0; i < wbs.length; i++) {
-        const key = mid + '-wb-' + i;
-        if (captured.has(key)) continue;
-        try {
-          const dataUrl = await captureNode(wbs[i]);
-          captured.set(key, { messageId: mid, domIndex: i, type: 'writing-block', dataUrl });
         } catch (e) {
           // 单个失败不影响其它
         }
@@ -388,7 +381,7 @@ return undefined;
       }
     }
     setDiag({
-      version: '3.4',
+      version: '4.0',
       msInitError: MS_INIT_ERROR,
       msType: typeof MS,
       msKeys: MS ? Object.keys(MS).slice(0, 20) : null,
@@ -413,19 +406,28 @@ return undefined;
         headers: { 'Content-Type': 'application/json' },
         data: JSON.stringify({ deckId, source: 'json', conversation: conv, images }),
         onload: (res) => {
-          setDiag({ version: '3.4', postStatus: res.status, postBody: (res.responseText || '').slice(0, 500) });
           try {
             const body = JSON.parse(res.responseText);
             if (res.status >= 200 && res.status < 300) {
               const fb = body.fallback ? `，${body.fallback} 个图示未采集（已退化成文字）` : '';
-              toast(`已导入 ${body.cards} 张卡片、${body.media} 张图片${fb}`);
+              const bad = Array.isArray(body.issues) ? body.issues.length : 0;
+              const warn = bad ? `，⚠ ${bad} 张卡体检不通过` : '';
+              toast(`已导入 ${body.cards} 张卡片、${body.media} 张图片${fb}${warn}`);
+              // 体检结果留在页面里，方便事后核对，不用逐张打开卡片。
+              setDiag({
+                version: '4.0',
+                postStatus: res.status,
+                mismatch: body.mismatch,
+                issues: body.issues,
+                reports: body.reports,
+              });
             } else toast(`导入失败：${body.message || res.status}`);
           } catch {
             toast(`导入失败：${res.status}`);
           }
         },
         onerror: (e) => {
-          setDiag({ version: '3.4', postError: String(e && (e.error || e.message || e)) });
+          setDiag({ version: '4.0', postError: String(e && (e.error || e.message || e)) });
           toast('连不上 bnki（localhost:18420）');
         },
       });
