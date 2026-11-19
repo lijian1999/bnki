@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ChatGPT → bnki
 // @namespace    bnki
-// @version      2.9
+// @version      3.1
 // @description  在 ChatGPT 会话页点一下，把整段学习模式会话导入 bnki（每个 AI 回答一张笔记卡；图示按网页真实渲染截图保存，不再重画）。
 // @match        https://chatgpt.com/*
 // @match        https://chat.openai.com/*
@@ -66,7 +66,7 @@ return undefined;
   }
 
   setDiag({
-    version: '2.9',
+    version: '3.1',
     msInitError: MS_INIT_ERROR,
     msType: typeof MS,
     msKeys: MS ? Object.keys(MS).slice(0, 20) : null,
@@ -165,11 +165,15 @@ return undefined;
       const tops = [...body.querySelectorAll('[data-d-component]')].filter(
         (el) => !el.parentElement?.closest('[data-d-component]'),
       );
-      const visuals = tops.filter(
-        (el) =>
-          !TEXTISH.includes(el.getAttribute('data-d-component')) &&
-          !el.querySelector('input[type=radio],[role=radio],button'),
-      );
+      // 选择题组件（radio-group / radio / button）交给服务端渲染成选项文字，
+      // 不截图；其它组件即使内部有按钮（图片框的展开按钮）也要截图。
+      const visuals = tops.filter((el) => {
+        const type = el.getAttribute('data-d-component');
+        if (TEXTISH.includes(type)) return false;
+        if (type === 'math' || type === 'badge') return false; // 单独按文档顺序采集
+        if (type === 'radio-group' || type === 'radio' || type === 'button') return false;
+        return !el.querySelector('input[type=radio],[role=radio]');
+      });
       for (let i = 0; i < visuals.length; i++) {
         const key = mid + '-' + i;
         if (captured.has(key)) continue;
@@ -187,6 +191,60 @@ return undefined;
           // 单个失败不影响其它
         } finally {
           for (const s of pseudos) s.remove();
+        }
+      }
+
+      // 公式按文档顺序统一采集：顶层是块公式（源码 \[ … \]），嵌在 text
+      // 组件里的是行内公式（源码 \( … \)）。两者共用 'math' 队列，顺序和源码一致。
+      const maths = [...body.querySelectorAll('[data-d-component="math"]')].filter((el) => {
+        const anc = el.parentElement?.closest('[data-d-component]');
+        return !anc || anc.getAttribute('data-d-component') === 'text';
+      });
+      for (let i = 0; i < maths.length; i++) {
+        const key = mid + '-math-' + i;
+        if (captured.has(key)) continue;
+        const pseudos = materializePseudo(maths[i]);
+        try {
+          const dataUrl = await MS.domToPng(maths[i], { scale: 2 });
+          captured.set(key, { messageId: mid, domIndex: i, type: 'math', dataUrl });
+        } catch (e) {
+          // 单个失败不影响其它
+        } finally {
+          for (const s of pseudos) s.remove();
+        }
+      }
+
+      // 徽章：嵌在 text 里（表格单元格）的是行内徽章，顶层徽章也一起按文档顺序采。
+      const badges = [...body.querySelectorAll('[data-d-component="badge"]')].filter((el) => {
+        const anc = el.parentElement?.closest('[data-d-component]');
+        return !anc || anc.getAttribute('data-d-component') === 'text';
+      });
+      for (let i = 0; i < badges.length; i++) {
+        const key = mid + '-badge-' + i;
+        if (captured.has(key)) continue;
+        const pseudos = materializePseudo(badges[i]);
+        try {
+          const dataUrl = await MS.domToPng(badges[i], { scale: 2 });
+          captured.set(key, { messageId: mid, domIndex: i, type: 'badge', dataUrl });
+        } catch (e) {
+          // 单个失败不影响其它
+        } finally {
+          for (const s of pseudos) s.remove();
+        }
+      }
+
+      // WritingBlock 是 ProseMirror 编辑器 widget，也不是 data-d-component。
+      const wbs = [...body.querySelectorAll('[class*="writing-block-editor"]')].filter(
+        (el) => !el.parentElement?.closest('[class*="writing-block-editor"]'),
+      );
+      for (let i = 0; i < wbs.length; i++) {
+        const key = mid + '-wb-' + i;
+        if (captured.has(key)) continue;
+        try {
+          const dataUrl = await MS.domToPng(wbs[i], { scale: 2 });
+          captured.set(key, { messageId: mid, domIndex: i, type: 'writing-block', dataUrl });
+        } catch (e) {
+          // 单个失败不影响其它
         }
       }
 
@@ -217,8 +275,18 @@ return undefined;
    * ChatGPT 用虚拟滚动：视口外的消息会被卸载，滚动着采只能拿到零星几个。
    * 这里把滚动容器临时撑到整段对话的高度，让所有消息一次性挂载，再逐个截图。
    */
+  /**
+   * 页面上可能有多个 thread-scroll-container，隐藏的那几个 clientHeight 是 0，
+   * 取错的话撑高无效，只能采到零星几张。这里挑可见且最高的那个。
+   */
+  function findScrollContainer() {
+    const all = [...document.querySelectorAll('[class*="thread-scroll-container"]')];
+    const visible = all.filter((el) => el.clientHeight > 0);
+    return visible.sort((a, b) => b.clientHeight - a.clientHeight)[0] ?? null;
+  }
+
   async function captureAllFigures() {
-    const sc = document.querySelector('[class*="thread-scroll-container"]');
+    const sc = findScrollContainer();
     if (!sc) return [];
 
     // Reveal 包装器会把没滚到过的组件设成 visibility:hidden，截图前强制可见。
@@ -280,7 +348,7 @@ return undefined;
       }
     }
     setDiag({
-      version: '2.9',
+      version: '3.1',
       msInitError: MS_INIT_ERROR,
       msType: typeof MS,
       msKeys: MS ? Object.keys(MS).slice(0, 20) : null,
@@ -305,7 +373,7 @@ return undefined;
         headers: { 'Content-Type': 'application/json' },
         data: JSON.stringify({ deckId, source: 'json', conversation: conv, images }),
         onload: (res) => {
-          setDiag({ version: '2.9', postStatus: res.status, postBody: (res.responseText || '').slice(0, 500) });
+          setDiag({ version: '3.1', postStatus: res.status, postBody: (res.responseText || '').slice(0, 500) });
           try {
             const body = JSON.parse(res.responseText);
             if (res.status >= 200 && res.status < 300) {
@@ -317,7 +385,7 @@ return undefined;
           }
         },
         onerror: (e) => {
-          setDiag({ version: '2.9', postError: String(e && (e.error || e.message || e)) });
+          setDiag({ version: '3.1', postError: String(e && (e.error || e.message || e)) });
           toast('连不上 bnki（localhost:18420）');
         },
       });

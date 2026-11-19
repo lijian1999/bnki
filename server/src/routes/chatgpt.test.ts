@@ -154,6 +154,67 @@ describe('POST /api/import/chatgpt', () => {
     expect(front).toContain('结束。');
   });
 
+  it('行内公式和块公式共用截图队列', async () => {
+    const deckId = insertDeck();
+    const png = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+      'base64',
+    );
+    const dataUrl = `data:image/png;base64,${png.toString('base64')}`;
+    const text = '先看块公式：\n\n\\[\nT_{map}(t)\n\\]\n\n这里的 \\(T\\) 是变换矩阵，\\(t\\) 是时刻。';
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/import/chatgpt',
+      payload: {
+        deckId,
+        source: 'json',
+        conversation: conversation([text]),
+        images: [
+          { messageId: 'a0', domIndex: 0, type: 'math', dataUrl },
+          { messageId: 'a0', domIndex: 1, type: 'math', dataUrl },
+          { messageId: 'a0', domIndex: 2, type: 'math', dataUrl },
+        ],
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ cards: 1, media: 3, fallback: 0 });
+    const front = (ctx.db.prepare(`SELECT front FROM items WHERE deck_id = ? AND kind = 'card'`).get(deckId) as any).front;
+    expect(front.match(/!\[\]\(media\//g)?.length).toBe(3);
+    expect(front).not.toContain('〔公式〕');
+    expect(front).toContain('是变换矩阵');
+  });
+
+  it('Link 组件变成 Markdown 链接', async () => {
+    const deckId = insertDeck();
+    const text = '打开 <Link url="https://wiki.ros.org/tf/Tutorials" title="ROS 1 官方 tf 教程"/>。';
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/import/chatgpt',
+      payload: { deckId, source: 'json', conversation: conversation([text]) },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ cards: 1, media: 0, fallback: 0 });
+    const front = (ctx.db.prepare(`SELECT front FROM items WHERE deck_id = ? AND kind = 'card'`).get(deckId) as any).front;
+    expect(front).toContain('[ROS 1 官方 tf 教程](https://wiki.ros.org/tf/Tutorials)');
+    expect(front).not.toContain('<Link');
+  });
+
+  it('WritingBlock 采集不到时保留正文', async () => {
+    const deckId = insertDeck();
+    const text = '<WritingBlock id="58321" variant="standard"># 学习主题\n\n我的背景：计算机专业硕士。</WritingBlock>';
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/import/chatgpt',
+      payload: { deckId, source: 'json', conversation: conversation([text]) },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ cards: 1, media: 0, fallback: 0 });
+    const front = (ctx.db.prepare(`SELECT front FROM items WHERE deck_id = ? AND kind = 'card'`).get(deckId) as any).front;
+    expect(front).toContain('学习主题');
+    expect(front).toContain('计算机专业硕士');
+    expect(front).not.toMatch(/media\//);
+  });
+
   it('FileCite 引用标记不当作图示', async () => {
     const deckId = insertDeck();
     const text = '教程还说明，Scout Mini 提供里程计。<FileCite ref="turn0file0" line_range_start={97} line_range_end={108}/>\n\n但资料没有明确给出 LiDAR 坐标系。';

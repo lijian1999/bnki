@@ -839,10 +839,12 @@ export function renderAnswerMarkdownWithImages(
     if (node.type === 'text') {
       let t = (node.text ?? '').trim();
       if (!t) continue;
-      // 源码里的 \[ … \] 是公式块，网页会渲染成公式组件，用截图替换。
-      t = t.replace(/\\\[([\s\S]*?)\\\]/g, () => {
+      // 源码里的 \[ … \] 是块公式、\( … \) 是行内公式，网页都渲染成公式组件。
+      // 两者按出现顺序消费同一份 math 截图队列，行内公式用行内图片保持句子连贯。
+      t = t.replace(/\\\[([\s\S]*?)\\\]|\\\(([\s\S]*?)\\\)/g, (whole, block) => {
         const path = takeImage('math');
-        return path ? `![](${path})` : '〔公式〕';
+        if (path) return `![](${path})`;
+        return block !== undefined ? '〔公式〕' : whole;
       });
       // ```mermaid 代码块在网页里渲染成流程图（app widget），用截图替换；
       // 没采集到就保留源码，至少内容不丢。
@@ -866,6 +868,22 @@ export function renderAnswerMarkdownWithImages(
     if (node.tag === 'radio-group' || node.tag === 'radio' || node.tag === 'button') {
       const md = choiceMarkdown(node);
       if (md) blocks.push(md);
+      continue;
+    }
+    if (node.tag === 'Link') {
+      const url = strAttr(node, 'url');
+      const title = strAttr(node, 'title') || url;
+      if (url) blocks.push(`[${title}](${url})`);
+      continue;
+    }
+    if (node.tag === 'WritingBlock') {
+      const path = takeImage('writing-block');
+      if (path) {
+        blocks.push(`![](${path})`);
+        continue;
+      }
+      const t = textContent(node).trim();
+      if (t) blocks.push(t);
       continue;
     }
     if (node.tag === 'text') {
