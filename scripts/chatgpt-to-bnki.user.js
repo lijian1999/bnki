@@ -1,12 +1,13 @@
 // ==UserScript==
 // @name         ChatGPT → bnki
 // @namespace    bnki
-// @version      3.2
+// @version      3.3
 // @description  在 ChatGPT 会话页点一下，把整段学习模式会话导入 bnki（每个 AI 回答一张笔记卡；图示按网页真实渲染截图保存，不再重画）。
 // @match        https://chatgpt.com/*
 // @match        https://chat.openai.com/*
 // @grant        GM_xmlhttpRequest
 // @connect      localhost
+// @connect      *
 // ==/UserScript==
 
 (function () {
@@ -66,7 +67,7 @@ return undefined;
   }
 
   setDiag({
-    version: '3.2',
+    version: '3.3',
     msInitError: MS_INIT_ERROR,
     msType: typeof MS,
     msKeys: MS ? Object.keys(MS).slice(0, 20) : null,
@@ -158,6 +159,72 @@ return undefined;
     return added;
   }
 
+  /**
+   * 跨域图片没法嵌进截图：fetch 被 CORS 拦、canvas.toDataURL 会因为画布被污染而抛错。
+   * GM_xmlhttpRequest 不受 CORS 限制，用它把图片字节取回来转成 data URL，
+   * 截图前临时替换 src，截完还原。
+   */
+  function gmFetchAsDataUrl(url) {
+    return new Promise((resolve, reject) => {
+      GM_xmlhttpRequest({
+        method: 'GET',
+        url,
+        responseType: 'blob',
+        timeout: 20000,
+        onload: (res) => {
+          if (res.status < 200 || res.status >= 300) {
+            reject(new Error('HTTP ' + res.status));
+            return;
+          }
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result);
+          reader.onerror = () => reject(reader.error || new Error('读取失败'));
+          reader.readAsDataURL(res.response);
+        },
+        onerror: (e) => reject(new Error(String((e && e.error) || 'GM 请求失败'))),
+        ontimeout: () => reject(new Error('GM 请求超时')),
+      });
+    });
+  }
+
+  async function inlineCrossOriginImages(root) {
+    const restore = [];
+    for (const img of root.querySelectorAll('img')) {
+      const src = img.currentSrc || img.src || '';
+      if (!src || src.startsWith('data:')) continue;
+      try {
+        if (new URL(src, location.href).origin === location.origin) continue;
+      } catch (e) {
+        continue;
+      }
+      try {
+        const dataUrl = await gmFetchAsDataUrl(src);
+        restore.push([img, img.src]);
+        img.src = dataUrl;
+        await new Promise((resolve) => {
+          if (img.complete) return resolve();
+          img.addEventListener('load', resolve, { once: true });
+          img.addEventListener('error', resolve, { once: true });
+        });
+      } catch (e) {
+        // 取不到就保持原样：截图里仍然空白，和修之前一样，不会更糟
+      }
+    }
+    return restore;
+  }
+
+  /** 截图一个节点：先内联跨域图片、实体化伪元素，截完把页面还原。 */
+  async function captureNode(node) {
+    const imgs = await inlineCrossOriginImages(node);
+    const pseudos = materializePseudo(node);
+    try {
+      return await MS.domToPng(node, { scale: 2 });
+    } finally {
+      for (const s of pseudos) s.remove();
+      for (const [img, src] of imgs) img.src = src;
+    }
+  }
+
   /** 采集当前挂载的消息里的图示（跳过纯文本组件和选择题）。 */
   async function captureMounted(captured) {
     for (const body of document.querySelectorAll('[data-response-body]')) {
@@ -178,10 +245,9 @@ return undefined;
       for (let i = 0; i < visuals.length; i++) {
         const key = mid + '-' + i;
         if (captured.has(key)) continue;
-        const pseudos = materializePseudo(visuals[i]);
         try {
           // domToPng 是异步的，必须 await，否则拿到的是 Promise 而不是 data URL。
-          const dataUrl = await MS.domToPng(visuals[i], { scale: 2 });
+          const dataUrl = await captureNode(visuals[i]);
           captured.set(key, {
             messageId: mid,
             domIndex: i,
@@ -190,8 +256,6 @@ return undefined;
           });
         } catch (e) {
           // 单个失败不影响其它
-        } finally {
-          for (const s of pseudos) s.remove();
         }
       }
 
@@ -203,14 +267,11 @@ return undefined;
       for (let i = 0; i < badges.length; i++) {
         const key = mid + '-badge-' + i;
         if (captured.has(key)) continue;
-        const pseudos = materializePseudo(badges[i]);
         try {
-          const dataUrl = await MS.domToPng(badges[i], { scale: 2 });
+          const dataUrl = await captureNode(badges[i]);
           captured.set(key, { messageId: mid, domIndex: i, type: 'badge', dataUrl });
         } catch (e) {
           // 单个失败不影响其它
-        } finally {
-          for (const s of pseudos) s.remove();
         }
       }
 
@@ -222,7 +283,7 @@ return undefined;
         const key = mid + '-wb-' + i;
         if (captured.has(key)) continue;
         try {
-          const dataUrl = await MS.domToPng(wbs[i], { scale: 2 });
+          const dataUrl = await captureNode(wbs[i]);
           captured.set(key, { messageId: mid, domIndex: i, type: 'writing-block', dataUrl });
         } catch (e) {
           // 单个失败不影响其它
@@ -238,14 +299,11 @@ return undefined;
       for (let i = 0; i < mermaids.length; i++) {
         const key = mid + '-mermaid-' + i;
         if (captured.has(key)) continue;
-        const pseudos = materializePseudo(mermaids[i]);
         try {
-          const dataUrl = await MS.domToPng(mermaids[i], { scale: 2 });
+          const dataUrl = await captureNode(mermaids[i]);
           captured.set(key, { messageId: mid, domIndex: i, type: 'mermaid', dataUrl });
         } catch (e) {
           // 单个失败不影响其它
-        } finally {
-          for (const s of pseudos) s.remove();
         }
       }
     }
@@ -329,7 +387,7 @@ return undefined;
       }
     }
     setDiag({
-      version: '3.2',
+      version: '3.3',
       msInitError: MS_INIT_ERROR,
       msType: typeof MS,
       msKeys: MS ? Object.keys(MS).slice(0, 20) : null,
@@ -354,7 +412,7 @@ return undefined;
         headers: { 'Content-Type': 'application/json' },
         data: JSON.stringify({ deckId, source: 'json', conversation: conv, images }),
         onload: (res) => {
-          setDiag({ version: '3.2', postStatus: res.status, postBody: (res.responseText || '').slice(0, 500) });
+          setDiag({ version: '3.3', postStatus: res.status, postBody: (res.responseText || '').slice(0, 500) });
           try {
             const body = JSON.parse(res.responseText);
             if (res.status >= 200 && res.status < 300) {
@@ -366,7 +424,7 @@ return undefined;
           }
         },
         onerror: (e) => {
-          setDiag({ version: '3.2', postError: String(e && (e.error || e.message || e)) });
+          setDiag({ version: '3.3', postError: String(e && (e.error || e.message || e)) });
           toast('连不上 bnki（localhost:18420）');
         },
       });
