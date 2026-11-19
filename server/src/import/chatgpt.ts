@@ -843,6 +843,12 @@ export function renderAnswerMarkdownWithImages(
         const path = takeImage('math');
         return path ? `![](${path})` : '〔公式〕';
       });
+      // ```mermaid 代码块在网页里渲染成流程图（app widget），用截图替换；
+      // 没采集到就保留源码，至少内容不丢。
+      t = t.replace(/```mermaid\s*\n([\s\S]*?)```/g, (whole) => {
+        const path = takeImage('mermaid');
+        return path ? `![](${path})` : whole;
+      });
       blocks.push(t);
       continue;
     }

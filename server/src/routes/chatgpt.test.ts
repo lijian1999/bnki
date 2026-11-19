@@ -154,6 +154,45 @@ describe('POST /api/import/chatgpt', () => {
     expect(front).toContain('结束。');
   });
 
+  it('mermaid 代码块用截图替换', async () => {
+    const deckId = insertDeck();
+    const png = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+      'base64',
+    );
+    const dataUrl = `data:image/png;base64,${png.toString('base64')}`;
+    const text = '管理模型：\n\n```mermaid\nflowchart TD\n    A --> B\n```\n\n注意：退出 Bash 是进程层面的操作。';
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/import/chatgpt',
+      payload: {
+        deckId,
+        source: 'json',
+        conversation: conversation([text]),
+        images: [{ messageId: 'a0', domIndex: 0, type: 'mermaid', dataUrl }],
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ cards: 1, media: 1, fallback: 0 });
+    const front = (ctx.db.prepare(`SELECT front FROM items WHERE deck_id = ? AND kind = 'card'`).get(deckId) as any).front;
+    expect(front).toMatch(/!\[\]\(media\/[0-9a-f]{16}\.png\)/);
+    expect(front).not.toContain('flowchart TD');
+    expect(front).toContain('注意：退出 Bash 是进程层面的操作。');
+  });
+
+  it('mermaid 采集不到时保留源码', async () => {
+    const deckId = insertDeck();
+    const text = '```mermaid\nflowchart TD\n    A --> B\n```';
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/import/chatgpt',
+      payload: { deckId, source: 'json', conversation: conversation([text]) },
+    });
+    expect(res.statusCode).toBe(200);
+    const front = (ctx.db.prepare(`SELECT front FROM items WHERE deck_id = ? AND kind = 'card'`).get(deckId) as any).front;
+    expect(front).toContain('flowchart TD');
+  });
+
   it('每条 AI 回答一张笔记卡，Markdown 保留，图示变成 SVG 图片', async () => {
     const deckId = insertDeck();
     const res = await app.inject({

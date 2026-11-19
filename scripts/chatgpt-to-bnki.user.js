@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ChatGPT → bnki
 // @namespace    bnki
-// @version      2.7
+// @version      2.8
 // @description  在 ChatGPT 会话页点一下，把整段学习模式会话导入 bnki（每个 AI 回答一张笔记卡；图示按网页真实渲染截图保存，不再重画）。
 // @match        https://chatgpt.com/*
 // @match        https://chat.openai.com/*
@@ -66,7 +66,7 @@ return undefined;
   }
 
   setDiag({
-    version: '2.7',
+    version: '2.8',
     msInitError: MS_INIT_ERROR,
     msType: typeof MS,
     msKeys: MS ? Object.keys(MS).slice(0, 20) : null,
@@ -106,6 +106,23 @@ return undefined;
             type: visuals[i].getAttribute('data-d-component'),
             dataUrl,
           });
+        } catch (e) {
+          // 单个失败不影响其它
+        }
+      }
+
+      // mermaid 图不是 data-d-component：网页把它渲染成 app widget
+      // （div.group/app-widget > div.group/mermaid-preview > svg），源码里的
+      // ```mermaid 代码块会被替换成这张截图。
+      const mermaids = [...body.querySelectorAll('[class*="mermaid-preview"]')].filter(
+        (el) => !el.parentElement?.closest('[class*="mermaid-preview"]'),
+      );
+      for (let i = 0; i < mermaids.length; i++) {
+        const key = mid + '-mermaid-' + i;
+        if (captured.has(key)) continue;
+        try {
+          const dataUrl = await MS.domToPng(mermaids[i], { scale: 2 });
+          captured.set(key, { messageId: mid, domIndex: i, type: 'mermaid', dataUrl });
         } catch (e) {
           // 单个失败不影响其它
         }
@@ -181,7 +198,7 @@ return undefined;
       }
     }
     setDiag({
-      version: '2.7',
+      version: '2.8',
       msInitError: MS_INIT_ERROR,
       msType: typeof MS,
       msKeys: MS ? Object.keys(MS).slice(0, 20) : null,
@@ -206,7 +223,7 @@ return undefined;
         headers: { 'Content-Type': 'application/json' },
         data: JSON.stringify({ deckId, source: 'json', conversation: conv, images }),
         onload: (res) => {
-          setDiag({ version: '2.7', postStatus: res.status, postBody: (res.responseText || '').slice(0, 500) });
+          setDiag({ version: '2.8', postStatus: res.status, postBody: (res.responseText || '').slice(0, 500) });
           try {
             const body = JSON.parse(res.responseText);
             if (res.status >= 200 && res.status < 300) {
@@ -218,7 +235,7 @@ return undefined;
           }
         },
         onerror: (e) => {
-          setDiag({ version: '2.7', postError: String(e && (e.error || e.message || e)) });
+          setDiag({ version: '2.8', postError: String(e && (e.error || e.message || e)) });
           toast('连不上 bnki（localhost:18420）');
         },
       });
