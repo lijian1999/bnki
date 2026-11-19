@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ChatGPT → bnki
 // @namespace    bnki
-// @version      2.8
+// @version      2.9
 // @description  在 ChatGPT 会话页点一下，把整段学习模式会话导入 bnki（每个 AI 回答一张笔记卡；图示按网页真实渲染截图保存，不再重画）。
 // @match        https://chatgpt.com/*
 // @match        https://chat.openai.com/*
@@ -66,7 +66,7 @@ return undefined;
   }
 
   setDiag({
-    version: '2.8',
+    version: '2.9',
     msInitError: MS_INIT_ERROR,
     msType: typeof MS,
     msKeys: MS ? Object.keys(MS).slice(0, 20) : null,
@@ -80,6 +80,82 @@ return undefined;
       'position:fixed;right:24px;bottom:80px;z-index:99999;background:#111;color:#fff;padding:10px 14px;border-radius:10px;font:13px system-ui;box-shadow:0 4px 16px rgba(0,0,0,.25);max-width:360px';
     document.body.appendChild(el);
     setTimeout(() => el.remove(), 15000);
+  }
+
+  /**
+   * 截图库不处理 ::before / ::after，而 ChatGPT 的列表序号正是靠
+   * `span.Marker::before { content: counter(d-list-item) }` 渲染的，
+   * 直接截图会丢掉序号。这里在截图前把伪元素实体化成真实 span，
+   * 截完再移除。
+   */
+  function resolveCounter(el, expr) {
+    const m = expr.match(/counter\(\s*([^,)\s]+)/);
+    if (!m) return '';
+    const name = m[1];
+    let base = 0;
+    let resetEl = null;
+    for (let cur = el; cur; cur = cur.parentElement) {
+      const rm = (getComputedStyle(cur).counterReset || '').match(new RegExp(name + '\\s+(-?\\d+)'));
+      if (rm) {
+        base = parseInt(rm[1], 10);
+        resetEl = cur;
+        break;
+      }
+    }
+    if (!resetEl) return '';
+    let count = 0;
+    const walk = (node) => {
+      for (const c of node.children) {
+        if (c.getAttribute('data-bnki-pseudo')) continue;
+        if ((getComputedStyle(c).counterIncrement || '').includes(name)) count++;
+        if (c === el) return true;
+        if (walk(c)) return true;
+      }
+      return false;
+    };
+    walk(resetEl);
+    return String(base + count);
+  }
+
+  function pseudoText(el, cs, content) {
+    if (/^["']/.test(content)) return content.slice(1, -1);
+    if (/^counter\(/.test(content)) return resolveCounter(el, content);
+    if (/^attr\(/.test(content)) {
+      const m = content.match(/attr\(([^)]+)\)/);
+      return m ? el.getAttribute(m[1]) || '' : '';
+    }
+    return '';
+  }
+
+  const PSEUDO_PROPS = [
+    'display', 'position', 'width', 'height', 'color', 'font-family', 'font-size',
+    'font-weight', 'font-style', 'line-height', 'margin', 'padding', 'text-align',
+    'white-space', 'vertical-align', 'float', 'background-color', 'border-radius', 'opacity',
+  ];
+
+  function materializePseudo(root) {
+    const added = [];
+    const all = [root, ...root.querySelectorAll('*')];
+    for (const el of all) {
+      for (const which of ['::before', '::after']) {
+        const cs = getComputedStyle(el, which);
+        const content = cs.content;
+        if (!content || content === 'none' || content === 'normal') continue;
+        const text = pseudoText(el, cs, content);
+        if (!text) continue;
+        const span = document.createElement('span');
+        span.textContent = text;
+        span.setAttribute('data-bnki-pseudo', which);
+        for (const prop of PSEUDO_PROPS) {
+          const v = cs.getPropertyValue(prop);
+          if (v) span.style.setProperty(prop, v);
+        }
+        if (which === '::before') el.insertBefore(span, el.firstChild);
+        else el.appendChild(span);
+        added.push(span);
+      }
+    }
+    return added;
   }
 
   /** 采集当前挂载的消息里的图示（跳过纯文本组件和选择题）。 */
@@ -97,6 +173,7 @@ return undefined;
       for (let i = 0; i < visuals.length; i++) {
         const key = mid + '-' + i;
         if (captured.has(key)) continue;
+        const pseudos = materializePseudo(visuals[i]);
         try {
           // domToPng 是异步的，必须 await，否则拿到的是 Promise 而不是 data URL。
           const dataUrl = await MS.domToPng(visuals[i], { scale: 2 });
@@ -108,6 +185,8 @@ return undefined;
           });
         } catch (e) {
           // 单个失败不影响其它
+        } finally {
+          for (const s of pseudos) s.remove();
         }
       }
 
@@ -120,11 +199,14 @@ return undefined;
       for (let i = 0; i < mermaids.length; i++) {
         const key = mid + '-mermaid-' + i;
         if (captured.has(key)) continue;
+        const pseudos = materializePseudo(mermaids[i]);
         try {
           const dataUrl = await MS.domToPng(mermaids[i], { scale: 2 });
           captured.set(key, { messageId: mid, domIndex: i, type: 'mermaid', dataUrl });
         } catch (e) {
           // 单个失败不影响其它
+        } finally {
+          for (const s of pseudos) s.remove();
         }
       }
     }
@@ -198,7 +280,7 @@ return undefined;
       }
     }
     setDiag({
-      version: '2.8',
+      version: '2.9',
       msInitError: MS_INIT_ERROR,
       msType: typeof MS,
       msKeys: MS ? Object.keys(MS).slice(0, 20) : null,
@@ -223,7 +305,7 @@ return undefined;
         headers: { 'Content-Type': 'application/json' },
         data: JSON.stringify({ deckId, source: 'json', conversation: conv, images }),
         onload: (res) => {
-          setDiag({ version: '2.8', postStatus: res.status, postBody: (res.responseText || '').slice(0, 500) });
+          setDiag({ version: '2.9', postStatus: res.status, postBody: (res.responseText || '').slice(0, 500) });
           try {
             const body = JSON.parse(res.responseText);
             if (res.status >= 200 && res.status < 300) {
@@ -235,7 +317,7 @@ return undefined;
           }
         },
         onerror: (e) => {
-          setDiag({ version: '2.8', postError: String(e && (e.error || e.message || e)) });
+          setDiag({ version: '2.9', postError: String(e && (e.error || e.message || e)) });
           toast('连不上 bnki（localhost:18420）');
         },
       });
