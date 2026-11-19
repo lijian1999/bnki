@@ -154,6 +154,22 @@ describe('POST /api/import/chatgpt', () => {
     expect(front).toContain('结束。');
   });
 
+  it('FileCite 引用标记不当作图示', async () => {
+    const deckId = insertDeck();
+    const text = '教程还说明，Scout Mini 提供里程计。<FileCite ref="turn0file0" line_range_start={97} line_range_end={108}/>\n\n但资料没有明确给出 LiDAR 坐标系。';
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/import/chatgpt',
+      payload: { deckId, source: 'json', conversation: conversation([text]) },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ cards: 1, media: 0, fallback: 0 });
+    const front = (ctx.db.prepare(`SELECT front FROM items WHERE deck_id = ? AND kind = 'card'`).get(deckId) as any).front;
+    expect(front).toContain('〔引用〕');
+    expect(front).not.toContain('FileCite');
+    expect(front).not.toMatch(/media\//);
+  });
+
   it('mermaid 代码块用截图替换', async () => {
     const deckId = insertDeck();
     const png = Buffer.from(

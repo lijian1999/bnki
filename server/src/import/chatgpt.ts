@@ -804,7 +804,8 @@ export function renderAnswerMarkdownWithImages(
   images: CapturedImage[],
   opts: RenderWithImagesOptions,
 ): { markdown: string; media: number; fallback: number } {
-  const cleaned = text.replace(/<Cite\b[^>]*\/>/g, '〔引用〕');
+  // Cite / FileCite 都是行内引用标记，复制成文字后保留一个灰色占位。
+  const cleaned = text.replace(/<(?:File)?Cite\b[^>]*\/>/g, '〔引用〕');
   const nodes = parseDil(cleaned);
 
   // 按类型分组，组内保持 DOM 顺序；每个节点按类型取下一张。
@@ -852,7 +853,7 @@ export function renderAnswerMarkdownWithImages(
       blocks.push(t);
       continue;
     }
-    if (node.tag === 'Cite') continue;
+    if (node.tag === 'Cite' || node.tag === 'FileCite') continue;
     if (node.tag === 'divider') {
       blocks.push('---');
       continue;
@@ -889,8 +890,8 @@ export function renderAnswerMarkdownWithImages(
 
 /** 把一条回答转成卡片正面 Markdown：文字保留 Markdown，组件换成 SVG 图片（旧路线，作为兜底保留）。 */
 export function renderAnswerMarkdown(text: string, opts: RenderOptions): { markdown: string; media: number } {
-  // Cite 是行内引用标记，复制成文字后保留一个灰色占位。
-  const cleaned = text.replace(/<Cite\b[^>]*\/>/g, '〔引用〕');
+  // Cite / FileCite 都是行内引用标记，复制成文字后保留一个灰色占位。
+  const cleaned = text.replace(/<(?:File)?Cite\b[^>]*\/>/g, '〔引用〕');
   const nodes = parseDil(cleaned);
   const blocks: string[] = [];
   let media = 0;
@@ -900,7 +901,7 @@ export function renderAnswerMarkdown(text: string, opts: RenderOptions): { markd
       if (t) blocks.push(t);
       continue;
     }
-    if (node.tag === 'Cite') continue;
+    if (node.tag === 'Cite' || node.tag === 'FileCite') continue;
     if (node.tag === 'divider') {
       blocks.push('---');
       continue;
