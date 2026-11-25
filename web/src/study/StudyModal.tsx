@@ -5,7 +5,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import {
   CARD_TYPE_NAMES, CONTENT_NAMES, HOUR,
   dueCutoff, previews, relTime, resolveStudyCfg, schedCfgFor,
-  type CardItem, type CardState, type ID, type Item, type QueueEntry, type Rating, type StudyContent,
+  type CardItem, type CardState, type ID, type Item, type QueueEntry, type Rating, type StudyCfg, type StudyContent,
 } from '@bnki/shared';
 import { renderMarkdown } from '@bnki/shared/markdown';
 import { api } from '../api';
@@ -20,7 +20,7 @@ import { customTimeMenu, studyMenu, type StudyOps } from './studyMenus';
 import { errText } from './util';
 import StudyIntro from './StudyIntro';
 import type { SchedCfg } from '@bnki/shared';
-import type { JSX } from 'react';
+import type { CSSProperties, JSX, KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from 'react';
 
 interface View {
   revealed: Set<number>; // 已揭示的挖空编号（按内容里出现的顺序，0 起）
@@ -38,6 +38,11 @@ interface Pos {
 
 const freshView = (): View => ({ revealed: new Set(), ans: false, hint: false, hideHint: false, topic: false });
 const GRADE_NAMES: Record<number, string> = { 1: '忘记了', 2: '模糊', 3: '记住了', 4: '很简单' };
+
+/** 卡片高度下限：头部 52 + 状态行 44 + 底部 112，再留约 100px 内容。 */
+const MIN_STUDY_H = 320;
+/** 高度上限留白，和 app.css 里 min(…, calc(100vh - 80px)) 保持一致。 */
+const STUDY_VP_GAP = 80;
 
 /** 队列空时按学习内容提示（文案照原型 startStudy）；拿不到 content 时用返回的 label 反推。 */
 function emptyText(content: StudyContent | undefined, label: string): string {
@@ -84,6 +89,9 @@ function StudyView(props: { target: StudyTarget }): JSX.Element | null {
   const [view, setView] = useState<View>(freshView);
 
   const contentRef = useRef<HTMLDivElement>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
+  const [dragH, setDragH] = useState<number | null>(null); // 拖动中的临时高度，松手后才写库
+  const pendingH = useRef<number | null>(null); // 键盘微调后等 keyup 再保存
   const counterRef = useRef<HTMLSpanElement>(null);
   const clozeTotal = useRef(0);
   const startAt = useRef(Date.now()); // 本次学习开始
@@ -202,6 +210,8 @@ function StudyView(props: { target: StudyTarget }): JSX.Element | null {
   }, [cardId, pos.idx, pos.done]);
 
   useEffect(() => () => void window.speechSynthesis?.cancel(), []);
+  // 拖到一半组件被卸载（Esc / 换卡重开）时，别把整页光标留在拖拽态
+  useEffect(() => () => document.body.classList.remove('col-resize'), []);
 
   if (!ready || !resolved || !settings || !cfg) return <Modal raw onClose={close}>{null}</Modal>;
   // 条目还没加载出来时先不出卡（查看器只有 items 这一个内容来源）
@@ -215,6 +225,85 @@ function StudyView(props: { target: StudyTarget }): JSX.Element | null {
     card !== null && (card.cardType === 'note' || (card.cardType === 'qa' && view.ans) || (card.cardType === 'topic' && view.topic));
   const preview: Record<number, string> | null =
     entry?.rep && settings.requeueNoReschedule ? null : previews(card?.state ?? null, Date.now(), cfg, settings.easyButton ? 4 : 3);
+
+  // ---------- 卡片高度：只动高度，宽度继续由 size-* 预设决定 ----------
+  const clampHeight = (h: number): number => {
+    const max = Math.max(MIN_STUDY_H, window.innerHeight - STUDY_VP_GAP);
+    return Math.min(Math.max(Math.round(h), MIN_STUDY_H), max);
+  };
+
+  /** 写回 decks.studyCfg.height（整块替换，所以传 null 就是删掉这个字段）。 */
+  const saveHeight = (h: number | null): void => {
+    const next: StudyCfg = { ...(deck?.studyCfg ?? {}) };
+    if (h == null) delete next.height;
+    else next.height = Math.round(h);
+    void api.decks
+      .update(deckId, { studyCfg: next })
+      .then((d) => {
+        qc.setQueryData(['deck', deckId], d);
+        setDragH(null); // 库里的值已经到了，交回给 resolved.height
+      })
+      .catch((e: unknown) => {
+        setDragH(null); // 保存失败就回到已保存的高度
+        toast(errText(e));
+      });
+  };
+
+  const resetHeight = (): void => {
+    if (resolved.height == null) return;
+    saveHeight(null);
+    toast('已恢复默认高度');
+  };
+
+  const gripDown = (e: ReactPointerEvent<HTMLDivElement>): void => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const gripEl = e.currentTarget;
+    const y0 = e.clientY;
+    const h0 = gripEl.parentElement?.getBoundingClientRect().height ?? 0;
+    if (!h0) return;
+    let last: number | null = null;
+    gripEl.classList.add('active');
+    document.body.classList.add('col-resize');
+    const onMove = (ev: PointerEvent): void => {
+      // 卡片在遮罩里垂直居中，高度变化时上边缘也在动；2× 位移才能让下边缘跟住光标
+      const h = clampHeight(h0 + (ev.clientY - y0) * 2);
+      if (h === last) return;
+      last = h;
+      setDragH(h);
+    };
+    const finish = (): void => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', finish);
+      window.removeEventListener('pointercancel', finish);
+      gripEl.classList.remove('active');
+      document.body.classList.remove('col-resize');
+      if (last != null) saveHeight(last); // 松手只写一次
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', finish);
+    window.addEventListener('pointercancel', finish);
+  };
+
+  const gripKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>): void => {
+    if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+    e.preventDefault();
+    e.stopPropagation();
+    const base = dragH ?? resolved.height ?? cardRef.current?.getBoundingClientRect().height ?? MIN_STUDY_H;
+    const step = (e.key === 'ArrowUp' ? 16 : -16) * (e.shiftKey ? 3 : 1);
+    const h = clampHeight(base + step);
+    if (h === Math.round(base)) return;
+    setDragH(h);
+    pendingH.current = h;
+  };
+
+  const gripKeyUp = (e: ReactKeyboardEvent<HTMLDivElement>): void => {
+    if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+    const h = pendingH.current;
+    pendingH.current = null;
+    if (h != null) saveHeight(h);
+  };
 
   const writeState = (c: CardItem, st: CardState | null): void => {
     const id = c.id;
@@ -407,6 +496,7 @@ function StudyView(props: { target: StudyTarget }): JSX.Element | null {
         .then((d) => qc.setQueryData(['deck', deckId], d))
         .catch((e: unknown) => toast(errText(e)));
     },
+    clearHeight: resetHeight,
     due: (due, text) => manualDue(c, due, text),
     mark: (action, msg) => manual(c, action, msg),
   });
@@ -445,13 +535,25 @@ function StudyView(props: { target: StudyTarget }): JSX.Element | null {
   const r = results.current;
   const graded = r[1] + r[2] + r[3] + r[4];
 
+  // 自定义高度；size-full 是“占满视口”，忽略它。宽度还是由 size-* 决定。
+  const customH = resolved.size === 'full' ? null : dragH ?? resolved.height;
+  const cardStyle: CSSProperties = done ? { background: 'var(--panel)' } : { backgroundColor: 'var(--panel)' };
+  if (customH != null) {
+    cardStyle.height = `${customH}px`;
+    // 窗口变矮时兜底，和拖动时的上限用同一个留白
+    cardStyle.maxHeight = `calc(100vh - ${STUDY_VP_GAP}px)`;
+  }
+  const canGrip = !done && !!card && resolved.size !== 'full';
+
   return (
     <Modal raw onClose={close} onKeyDown={onKey}>
       <button className="study-close" onClick={close} title="关闭（Esc）">×</button>
       <div className="study-wrap">
         <button className="study-arrow" onClick={() => go(-1)} title="上一张（←）">‹</button>
-        <div className={done || !card ? 'study' : `study col-${card.color || 'default'} size-${resolved.size} fs-${resolved.fontSize}`}
-          style={done ? { background: 'var(--panel)' } : { backgroundColor: 'var(--panel)' }}
+        <div
+          ref={cardRef}
+          className={done || !card ? 'study' : `study col-${card.color || 'default'} size-${resolved.size} fs-${resolved.fontSize}`}
+          style={cardStyle}
         >
           {done || !card ? (
             <div className="study-done">
@@ -615,6 +717,24 @@ function StudyView(props: { target: StudyTarget }): JSX.Element | null {
               </div>
             </>
           )}
+          {canGrip ? (
+            <div
+              className="study-grip"
+              role="separator"
+              aria-orientation="horizontal"
+              aria-label="拖动调整卡片高度，双击恢复默认"
+              aria-valuemin={MIN_STUDY_H}
+              aria-valuemax={Math.max(MIN_STUDY_H, window.innerHeight - STUDY_VP_GAP)}
+              {...(customH != null ? { 'aria-valuenow': Math.round(customH) } : {})}
+              tabIndex={0}
+              onPointerDown={gripDown}
+              onDoubleClick={resetHeight}
+              onKeyDown={gripKeyDown}
+              onKeyUp={gripKeyUp}
+            >
+              <i />
+            </div>
+          ) : null}
         </div>
         <button className="study-arrow" onClick={() => go(1)} title="下一张（→）">›</button>
       </div>

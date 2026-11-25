@@ -26,6 +26,8 @@ export interface StudyOps {
   dropCurrent: () => void;
   setColor: (c: CardColor) => void;
   setCfg: (patch: StudyCfg) => void;
+  /** 恢复默认高度：删掉 studyCfg.height，回到卡片大小预设的高度。 */
+  clearHeight: () => void;
   /** 自定义到期时间（绝对时刻）+ 提示文字。 */
   due: (due: number, text: string) => void;
   /** 完成学习 / 彻底忘记。 */
@@ -121,6 +123,12 @@ export function studyMenu(ops: StudyOps, decks: DeckSummary[]): MenuItem[] {
           checked: cur.size === k,
           onClick: () => ops.setCfg({ size: k }),
         })),
+    },
+    {
+      label: '恢复默认高度',
+      icon: '↕',
+      disabled: cur.height == null,
+      onClick: () => ops.clearHeight(),
     },
     '-',
     {

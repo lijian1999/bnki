@@ -75,5 +75,7 @@ export function resolveStudyCfg(cfg: StudyCfg | null | undefined, settings: Sett
     },
     fontSize: c.fontSize ?? settings.fontSize,
     size: c.size ?? 'default',
+    // 存进来的值可能是手改 JSON / 旧数据，非法值当作没调过高度
+    height: typeof c.height === 'number' && Number.isFinite(c.height) && c.height > 0 ? c.height : null,
   };
 }

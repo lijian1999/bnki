@@ -57,6 +57,8 @@ const fullSession: SessionResult = {
 
 let session: SessionResult;
 let calls: { url: string; method: string; body?: unknown }[];
+/** 需要别的卡片集配置（比如已存了高度）时覆盖默认 deck。 */
+let deckOverride: DeckSummary | null = null;
 
 function mockFetch(): void {
   vi.stubGlobal(
@@ -74,11 +76,15 @@ function mockFetch(): void {
       }
       calls.push({ url, method, body });
       const path = url.split('?')[0];
+      const curDeck = deckOverride ?? deck;
       let data: unknown = { ok: true };
       if (path === '/api/settings') data = { ...DEFAULT_SETTINGS, fuzz: false, ...settingsOverride };
-      else if (path === '/api/decks/d1') data = deck;
+      else if (path === '/api/decks/d1' && method === 'PATCH') {
+        const patch = body as { studyCfg?: DeckSummary['studyCfg'] } | undefined;
+        data = { ...curDeck, studyCfg: patch?.studyCfg ?? {} };
+      } else if (path === '/api/decks/d1') data = curDeck;
       else if (path === '/api/decks/d1/items') data = itemOverride ?? items;
-      else if (path === '/api/decks') data = [deck];
+      else if (path === '/api/decks') data = [curDeck];
       else if (path === '/api/study/d1/session') data = session;
       else if (path === '/api/study/review') data = { state: reviewed, label: '3天', requeue: false };
       else if (path === '/api/study/manual') data = { state: reviewed };
@@ -119,6 +125,7 @@ beforeEach(() => {
   session = fullSession;
   settingsOverride = {};
   itemOverride = null;
+  deckOverride = null;
   mockFetch();
   localStorage.setItem('bnki.studyIntroSeen', '1');
 });
@@ -332,5 +339,85 @@ describe('朗读（按设置）', () => {
     await openViewer(['c2'], 'c2');
     act(() => keyDown('r'));
     expect(await screen.findByText('浏览器不支持朗读')).toBeTruthy();
+  });
+});
+
+// ---------------------------------------------------------------- 卡片高度（方案 B）
+
+describe('卡片高度', () => {
+  const studyEl = (): HTMLElement => document.querySelector('.study') as HTMLElement;
+  const gripEl = (): HTMLElement => document.querySelector('.study-grip') as HTMLElement;
+  const patchCalls = (): { url: string; method: string; body?: unknown }[] =>
+    calls.filter((c) => c.method === 'PATCH' && c.url === '/api/decks/d1');
+
+  /** jsdom 没有布局：手动给卡片一个“当前高度”，拖动换算才有起点。 */
+  function stubHeight(h: number): void {
+    const el = studyEl();
+    el.getBoundingClientRect = () => ({
+      height: h, width: 640, top: 0, bottom: h, left: 0, right: 640, x: 0, y: 0, toJSON: () => ({}),
+    }) as DOMRect;
+  }
+
+  it('拖底边把手：拖动中实时变高，松手才写一次 studyCfg.height', async () => {
+    renderStudy();
+    await openStudy();
+    stubHeight(620);
+    expect(studyEl().style.height).toBe(''); // 没调过高度时由 size-* 决定
+
+    fireEvent.pointerDown(gripEl(), { clientY: 300, button: 0 });
+    fireEvent.pointerMove(window, { clientY: 330 });
+    // 卡片垂直居中：下边缘跟住光标需要 2× 位移 → 620 + 60
+    expect(studyEl().style.height).toBe('680px');
+    expect(patchCalls()).toHaveLength(0); // 拖动过程中不发请求
+
+    fireEvent.pointerUp(window);
+    await waitFor(() => expect(patchCalls()).toHaveLength(1));
+    expect(patchCalls()[0]?.body).toMatchObject({ studyCfg: { height: 680 } });
+    expect(studyEl().style.width).toBe(''); // 宽度仍然交给 size-*，没有被写死
+  });
+
+  it('拖动夹在 320 下限和视口上限之间', async () => {
+    renderStudy();
+    await openStudy();
+    stubHeight(620);
+    fireEvent.pointerDown(gripEl(), { clientY: 400 });
+    fireEvent.pointerMove(window, { clientY: 0 }); // 620 - 800 → 下限
+    expect(studyEl().style.height).toContain('320px');
+    fireEvent.pointerMove(window, { clientY: 900 }); // 远超上限
+    expect(studyEl().style.height).toContain(`${window.innerHeight - 80}px`);
+    fireEvent.pointerUp(window);
+    await waitFor(() => expect(patchCalls()).toHaveLength(1));
+  });
+
+  it('键盘 ↑↓ 微调，keyup 时保存', async () => {
+    renderStudy();
+    await openStudy();
+    stubHeight(620);
+    fireEvent.keyDown(gripEl(), { key: 'ArrowUp' });
+    expect(studyEl().style.height).toContain('636px');
+    expect(patchCalls()).toHaveLength(0); // 按住不放只保存最后的值
+    fireEvent.keyUp(gripEl(), { key: 'ArrowUp' });
+    await waitFor(() => expect(patchCalls()).toHaveLength(1));
+    expect(patchCalls()[0]?.body).toMatchObject({ studyCfg: { height: 636 } });
+  });
+
+  it('已保存的高度直接生效；双击把手删掉 height 并回到预设', async () => {
+    deckOverride = { ...deck, studyCfg: { height: 700 } };
+    renderStudy();
+    await openStudy();
+    expect(studyEl().style.height).toBe('700px');
+
+    fireEvent.doubleClick(gripEl());
+    await waitFor(() => expect(patchCalls()).toHaveLength(1));
+    const body = patchCalls()[0]?.body as { studyCfg: Record<string, unknown> };
+    expect(body.studyCfg.height).toBeUndefined();
+    await waitFor(() => expect(studyEl().style.height).toBe(''));
+  });
+
+  it('卡片大小选全屏时没有把手（高度由视口决定）', async () => {
+    deckOverride = { ...deck, studyCfg: { size: 'full' } };
+    renderStudy();
+    await openStudy();
+    expect(document.querySelector('.study-grip')).toBeNull();
   });
 });

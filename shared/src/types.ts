@@ -48,6 +48,7 @@ export interface StudyCfg {
   plan?: StudyPlan;
   fontSize?: FontSize; // 学习页文字大小
   size?: CardSize; // 学习页卡片大小
+  height?: number | null; // 学习页卡片高度（px）；null / 省略 = 跟随卡片大小预设
 }
 
 export interface ResolvedStudyCfg {
@@ -60,6 +61,7 @@ export interface ResolvedStudyCfg {
   plan: { mode: PlanMode; examDate: string | null; newPerDay: number; reviewPerDay: number };
   fontSize: FontSize;
   size: CardSize;
+  height: number | null;
 }
 
 /** 卡片集页的布局与显示选项，存 decks.display_cfg。 */

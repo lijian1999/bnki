@@ -417,6 +417,18 @@ textarea.text-input { height: auto; padding: 8px 10px; font-family: ui-monospace
 .study.size-wide { width: min(1080px, calc(100vw - 140px)); }
 .study.size-full { width: calc(100vw - 140px); height: calc(100vh - 40px); }
 .study.fs-small { font-size: 13px; } .study.fs-large { font-size: 17px; } .study.fs-xlarge { font-size: 20px; }
+/* 高度把手：底边 12px 拖拽条，正好落在 footer 的 16px 内边距里，不挡评分按钮 */
+.study-grip {
+  position: absolute; left: 0; right: 0; bottom: 0; height: 12px; z-index: 6; display: flex;
+  align-items: flex-end; justify-content: center; cursor: ns-resize; touch-action: none; outline: none;
+}
+.study-grip i {
+  display: block; width: 44px; height: 4px; border-radius: 2px; background: var(--line-2);
+  margin-bottom: 3px; opacity: .5; transition: width .12s, background .12s, opacity .12s;
+}
+.study:hover .study-grip i, .study-grip:focus-visible i { opacity: 1; background: var(--text-3); width: 64px; }
+.study-grip.active i { opacity: 1; background: var(--accent); width: 64px; }
+body.col-resize, body.col-resize * { cursor: ns-resize !important; }
 .study-head { display: flex; align-items: center; padding: 14px 16px 6px; gap: 4px; }
 .study-head .title { flex: 1; text-align: center; font-size: 13px; color: var(--text-2); }
 .study-state { display: flex; justify-content: center; gap: 36px; font-size: 12px; color: var(--text-2); padding: 0 20px 6px; }
